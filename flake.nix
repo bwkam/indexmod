@@ -37,6 +37,7 @@
             shellHook = ''
               # For rust-analyzer 'hover' tooltips to work.
               export RUST_SRC_PATH=${pkgs.rustPlatform.rustLibSrc}
+              export LIBCLANG_PATH = "${pkgs.llvmPackages_11.libclang.lib}/lib";
             '';
             buildInputs = nonRustDeps;
             nativeBuildInputs = with pkgs; [
@@ -44,7 +45,10 @@
               rustc
               cargo
               cargo-watch
+              cargo-shuttle
               rust-analyzer
+              pkg-config
+              rustPlatform.bindgenHook
             ];
           };
 
