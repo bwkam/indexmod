@@ -23,14 +23,6 @@ async fn main() -> shuttle_axum::ShuttleAxum {
                 .allow_methods([Method::GET, Method::POST, Method::DELETE])
                 .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE]),
         );
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 8080));
-
-    let cloned_router = router.clone();
-
-    axum::Server::bind(&addr)
-        .serve(cloned_router.into_make_service())
-        .await
-        .unwrap();
 
     Ok(router.into())
 }
