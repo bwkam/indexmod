@@ -1,4 +1,3 @@
-use anyhow::Result;
 use axum::{
     http::{
         header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
@@ -9,6 +8,9 @@ use axum::{
     Router,
 };
 use tower_http::cors::CorsLayer;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+use whatever::ApiDoc;
 pub mod error;
 pub mod whatever;
 
@@ -17,6 +19,7 @@ async fn main() -> shuttle_axum::ShuttleAxum {
     let router = Router::new()
         .route("/", get(hello))
         .route("/merge", post(whatever::merge_files))
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
         .layer(
             CorsLayer::new()
                 .allow_origin("*".parse::<HeaderValue>().unwrap())

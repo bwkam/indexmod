@@ -11,6 +11,7 @@ use axum::{
 };
 use rust_xlsxwriter::Workbook;
 use serde::Deserialize;
+use utoipa::OpenApi;
 use uuid::Uuid;
 
 #[derive(Deserialize, Debug)]
@@ -43,6 +44,17 @@ where
     }
 }
 
+#[derive(OpenApi)]
+#[openapi(paths(merge_files))]
+pub struct ApiDoc;
+
+#[utoipa::path(
+    post,
+    path = "/merge",
+    responses(
+        (status = 200, description = "Merge Excel files")
+    )
+)]
 pub async fn merge_files(Json(data): Json<Data>) -> Result<impl IntoResponse, AppError> {
     let vec: Vec<serde_json::Map<String, serde_json::Value>> =
         data.data.into_iter().flat_map(|file| file).collect();
