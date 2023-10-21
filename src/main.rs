@@ -27,7 +27,7 @@ async fn main() -> shuttle_axum::ShuttleAxum {
                 .allow_methods([Method::GET, Method::POST, Method::DELETE])
                 .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE]),
         )
-        .layer(DefaultBodyLimit::max(10 * 1000 * 1000));
+        .layer(DefaultBodyLimit::max(40 * 1000 * 1000));
 
     Ok(router.into())
 }
