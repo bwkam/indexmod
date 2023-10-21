@@ -1,4 +1,5 @@
 use axum::{
+    extract::DefaultBodyLimit,
     http::{
         header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
         HeaderValue, Method,
@@ -25,7 +26,8 @@ async fn main() -> shuttle_axum::ShuttleAxum {
                 .allow_origin("*".parse::<HeaderValue>().unwrap())
                 .allow_methods([Method::GET, Method::POST, Method::DELETE])
                 .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE]),
-        );
+        )
+        .layer(DefaultBodyLimit::max(1024));
 
     Ok(router.into())
 }
