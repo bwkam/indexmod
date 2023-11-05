@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Cursor};
+use std::{collections::HashMap, io::Cursor, sync::Arc};
 
 use anyhow::Result;
 use axum::{
@@ -9,6 +9,7 @@ use axum::{
 use calamine::{open_workbook_from_rs, DataType, Reader, Xlsx};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rust_xlsxwriter::Workbook;
+use tokio::sync::Mutex;
 use utoipa::OpenApi;
 
 // Make our own error that wraps `anyhow::Error`.
@@ -63,8 +64,10 @@ impl FileData {
     )
 )]
 pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, AppError> {
-    let mut rows_hash: HashMap<String, FileData> = HashMap::new();
+    let rows_hash: Arc<Mutex<HashMap<String, FileData>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut cutting_rows: u32 = 0;
+
+    let rows_hash_clone = rows_hash.clone();
 
     while let Some(field) = multipart.next_field().await.unwrap() {
         let content_type = field.content_type().map(str::to_owned);
@@ -84,11 +87,14 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
 
             let file_name = name.split("-").next().unwrap().to_string();
 
-            if rows_hash.contains_key(&file_name) {
-                let val = rows_hash.get_mut(&file_name).unwrap();
+            let mut rows_hash_clone_locked = rows_hash_clone.lock().await;
+
+            if rows_hash_clone_locked.contains_key(&file_name) {
+                let val = rows_hash_clone_locked.get_mut(&file_name).unwrap();
                 val.last_modified = date;
             } else {
-                rows_hash.insert(file_name.to_owned(), FileData::new(date, Vec::new()));
+                rows_hash_clone_locked
+                    .insert(file_name.to_owned(), FileData::new(date, Vec::new()));
             }
         }
 
@@ -100,39 +106,47 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
             }
         }
 
+        let rows_hash_clone = rows_hash.clone();
+
         if content_type
             == Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string())
         {
-            let task = tokio::task::spawn_blocking(move || {
-                let bytes = bytes.to_vec();
-                let reader = Cursor::new(bytes);
-                let mut workbook: Xlsx<_> = open_workbook_from_rs(reader).unwrap();
-                if let Some(range) = workbook.worksheet_range_at(0) {
-                    let sheet = range.unwrap();
-                    let rows: Vec<_> = sheet
-                        .to_owned()
-                        .rows()
-                        .into_iter()
-                        .map(|slice| slice.to_vec())
-                        .collect();
+            println!("Hi from here");
+            // tokio::task::spawn_blocking(|| async move {
+            println!("Hi from the reading thread.");
+            let mut rows_hash_clone_locked = rows_hash_clone.lock().await;
+            let bytes = bytes.to_vec();
+            let reader = Cursor::new(bytes);
+            let mut workbook: Xlsx<_> = open_workbook_from_rs(reader).unwrap();
+            if let Some(range) = workbook.worksheet_range_at(0) {
+                let sheet = range.unwrap();
+                let rows: Vec<_> = sheet
+                    .to_owned()
+                    .rows()
+                    .into_iter()
+                    .map(|slice| slice.to_vec())
+                    .collect();
 
-                    if rows_hash.contains_key(&other_name) {
-                        let val = rows_hash.get_mut(&other_name).unwrap();
-                        val.data = rows;
-                    } else {
-                        rows_hash.insert(
-                            other_name.to_owned(),
-                            FileData::new("unkown".to_string(), rows),
-                        );
-                    }
+                if rows_hash_clone_locked.contains_key(&other_name) {
+                    let val = rows_hash_clone_locked.get_mut(&other_name).unwrap();
+                    val.data = rows;
+                } else {
+                    rows_hash_clone_locked.insert(
+                        other_name.to_owned(),
+                        FileData::new("unkown".to_string(), rows),
+                    );
                 }
-            });
-
-            task.await.unwrap();
+            }
+            // });
         }
     }
 
-    let mut first_rows: Vec<String> = rows_hash
+    let rows_hash_clone = rows_hash.clone();
+    let rows_hash_clone_locked = rows_hash_clone.lock().await;
+
+    println!("Cur rows: {:?}", rows_hash_clone_locked);
+
+    let mut first_rows: Vec<String> = rows_hash_clone_locked
         .iter()
         .next()
         .unwrap()
@@ -152,8 +166,10 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
         })
         .collect();
 
-    let mut values_rows: Vec<Vec<String>> = rows_hash
-        .into_iter()
+    let mut values_rows: Vec<Vec<String>> = rows_hash_clone
+        .lock()
+        .await
+        .iter()
         .enumerate()
         .map(|(i, (name, inner_vec))| {
             let main_data = inner_vec
