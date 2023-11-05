@@ -18,6 +18,9 @@ use axum::{
 };
 use calamine::{open_workbook, open_workbook_from_rs, DataType, Range, Reader, Rows, Xlsx};
 use rust_xlsxwriter::Workbook;
+use serde::Deserialize;
+use serde::Serialize;
+use strum_macros::Display;
 use utoipa::OpenApi;
 
 use crate::AppState;
@@ -114,38 +117,16 @@ impl FileData {
 )]
 pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, AppError> {
     let mut rows_hash: HashMap<String, FileData> = HashMap::new();
+    let mut first_row_headers: Vec<String> = Vec::new();
     let mut cutting_rows: u32 = 0;
-
-    let rows_hash_clone = rows_hash.clone();
 
     while let Some(mut field) = multipart.next_field().await.unwrap() {
         println!("In the loop here.");
         let content_type = field.content_type().map(str::to_owned);
-        field.headers().iter().for_each(|x| {
-            println!("Header: {:?}", x);
-        });
+
         let name = field.name().unwrap_or("unknown").to_owned();
         let other_name = field.file_name().unwrap_or("unknown").to_owned();
         let bytes = field.bytes().await.unwrap();
-
-        if name.ends_with("LM") {
-            let last_modified_str = String::from_utf8(bytes.to_vec()).unwrap();
-            let last_modified_i64 = last_modified_str.parse::<i64>().unwrap();
-
-            let naive = NaiveDateTime::from_timestamp_millis(last_modified_i64).unwrap();
-            let datetime: DateTime<Utc> = DateTime::from_naive_utc_and_offset(naive, Utc);
-
-            let date = format!("{}", datetime.format("%Y %m %d %H%M"));
-
-            let file_name = name.split("-").next().unwrap().to_string();
-
-            if rows_hash.contains_key(&file_name) {
-                let val = rows_hash.get_mut(&file_name).unwrap();
-                val.last_modified = date;
-            } else {
-                rows_hash.insert(file_name.to_owned(), FileData::new(date, Vec::new()));
-            }
-        }
 
         if name == "cuttingRows" {
             println!("Setting cutting rows.");
@@ -158,35 +139,32 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
             }
         }
 
+        println!("Final Cutting rows: {:?}", cutting_rows);
+
         if content_type
             == Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string())
         {
-            let task = tokio::task::spawn_blocking(move || {
-                let bytes = bytes.to_vec();
-                let reader = Cursor::new(bytes);
-                let mut workbook: Xlsx<_> = open_workbook_from_rs(reader).unwrap();
-                if let Some(range) = workbook.worksheet_range_at(0) {
-                    let sheet = range.unwrap();
-                    let rows: Vec<_> = sheet
-                        .to_owned()
-                        .rows()
-                        .into_iter()
-                        .map(|slice| slice.to_vec())
-                        .collect();
+            let bytes = bytes.to_vec();
+            let reader = Cursor::new(bytes);
+            let mut workbook: Xlsx<_> = open_workbook_from_rs(reader).unwrap();
+            if let Some(range) = workbook.worksheet_range_at(0) {
+                let sheet = range.unwrap();
+                let rows: Vec<_> = sheet
+                    .to_owned()
+                    .rows()
+                    .into_iter()
+                    .map(|slice| slice.to_vec())
+                    .collect();
 
-                    if rows_hash.contains_key(&other_name) {
-                        let val = rows_hash.get_mut(&other_name).unwrap();
-                        val.data = rows;
-                    } else {
-                        rows_hash.insert(
-                            other_name.to_owned(),
-                            FileData::new("unkown".to_string(), rows),
-                        );
-                    }
+                // rows_hash.insert(other_name.to_owned(), rows);
+
+                if rows_hash.contains_key(&other_name) {
+                    let mut val = rows_hash.get_mut(&other_name).unwrap();
+                    val.data = rows;
+                } else {
+                    rows_hash.insert(other_name.to_owned(), FileData::new(0, rows));
                 }
-            });
-
-            task.await.unwrap();
+            }
         }
     }
 
@@ -215,6 +193,9 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
         .flatten()
         .collect();
 
+    println!("First rows: {:?}", first_rows);
+
+    // TODO: see if flat_map works instead of flatten
     let mut values_rows: Vec<Vec<String>> = rows_hash
         .into_iter()
         .enumerate()
