@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
                 .allow_methods([Method::GET, Method::POST, Method::DELETE])
                 .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE, LAST_MODIFIED]),
         )
-        .layer(DefaultBodyLimit::max(300 * 1000 * 1000));
+        .layer(DefaultBodyLimit::max(800 * 1000 * 1000));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
     println!("->> LISTENING on {addr}\n");

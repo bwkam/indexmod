@@ -6,9 +6,10 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use calamine::{open_workbook_from_rs, DataType, Reader, Xlsx};
+use calamine::{open_workbook_auto_from_rs, DataType, Reader};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rust_xlsxwriter::Workbook;
+use std::sync::Mutex;
 use utoipa::OpenApi;
 
 // Make our own error that wraps `anyhow::Error`.
@@ -63,6 +64,8 @@ impl FileData {
     )
 )]
 pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, AppError> {
+    println!("Merge requested. Processing files...");
+
     let mut rows_hash: HashMap<String, FileData> = HashMap::new();
     let mut cutting_rows: u32 = 0;
 
@@ -75,12 +78,15 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
 
         if name.ends_with("LM") {
             let last_modified_str = String::from_utf8(bytes.to_vec()).unwrap();
+            println!("Last modified (str): {}", &last_modified_str);
             let last_modified_i64 = last_modified_str.parse::<i64>().unwrap();
+            println!("Last modified (i64): {}", &last_modified_i64);
 
             let naive = NaiveDateTime::from_timestamp_millis(last_modified_i64).unwrap();
             let datetime: DateTime<Utc> = DateTime::from_naive_utc_and_offset(naive, Utc);
 
             let date = format!("{}", datetime.format("%Y %m %d %H%M"));
+            print!("Last modified (date): {}", &date);
 
             let file_name = name.split("-").next().unwrap().to_string();
 
@@ -102,11 +108,14 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
 
         if content_type
             == Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string())
+            || content_type == Some("application/vnd.ms-excel".to_string())
         {
-            let task = tokio::task::spawn_blocking(move || {
-                let bytes = bytes.to_vec();
+            let bytes = bytes.to_vec();
+
+            tokio::task::spawn_blocking(move || {
                 let reader = Cursor::new(bytes);
-                let mut workbook: Xlsx<_> = open_workbook_from_rs(reader).unwrap();
+                let mut workbook = open_workbook_auto_from_rs(reader).unwrap();
+
                 if let Some(range) = workbook.worksheet_range_at(0) {
                     let sheet = range.unwrap();
                     let rows: Vec<_> = sheet
@@ -126,18 +135,13 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
                         );
                     }
                 }
-            });
-
-            task.await.unwrap();
+            })
+            .await
+            .unwrap();
         }
     }
 
-    let rows_hash_clone = rows_hash.clone();
-    let rows_hash_clone_locked = rows_hash_clone.lock().await;
-
-    println!("Cur rows: {:?}", rows_hash_clone_locked);
-
-    let mut first_rows: Vec<String> = rows_hash_clone_locked
+    let mut first_rows: Vec<String> = rows_hash
         .iter()
         .next()
         .unwrap()
@@ -157,6 +161,9 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
         })
         .collect();
 
+    println!("Merging files...");
+
+    let mut acc_width = 0;
     let mut values_rows: Vec<Vec<String>> = rows_hash
         .into_iter()
         .enumerate()
@@ -166,7 +173,7 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
                 .iter()
                 .skip((1 + cutting_rows) as usize)
                 .enumerate()
-                .map(|(j, file)| {
+                .map(|(_, file)| {
                     let mut intro_headers = vec![];
                     let mut cur_row_values: Vec<String> = file
                         .iter()
@@ -182,14 +189,18 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
                         .collect();
 
                     intro_headers.push((&inner_vec.last_modified).to_owned());
-                    intro_headers.push(i.to_string());
-                    intro_headers.push(j.to_string());
-                    intro_headers.push(j.to_string() + "-" + i.to_string().as_str());
+                    intro_headers.push((i + 1).to_string());
+                    intro_headers.push((acc_width + 1).to_string());
+                    intro_headers
+                        .push((acc_width + 1).to_string() + "-" + (i + 1).to_string().as_str());
                     intro_headers.push(name.to_string());
 
                     let mut vec: Vec<String> = vec![];
                     vec.append(&mut intro_headers);
                     vec.append(&mut cur_row_values);
+
+                    acc_width += 1;
+
                     vec
                 })
                 .collect::<Vec<Vec<String>>>();
@@ -215,12 +226,24 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
 
     values_rows.insert(0, extra_headers);
 
-    // TODO: put this in a seperate thread
-    let mut workbook = Workbook::new();
-    let worksheet = workbook.add_worksheet();
+    let workbook: Arc<Mutex<Workbook>> = Arc::new(Mutex::new(Workbook::new()));
+    let workbook_clone = workbook.clone();
 
-    worksheet.write_row_matrix(0, 0, &values_rows)?;
-    workbook.save("output.xlsx").unwrap();
+    println!("Writing to file...");
+    tokio::task::spawn_blocking(move || {
+        let mut workbook_clone_locked = workbook_clone.lock().unwrap();
+        let worksheet = workbook_clone_locked.add_worksheet();
+        worksheet.write_row_matrix(0, 0, &values_rows).unwrap();
+    })
+    .await
+    .unwrap();
 
-    Ok(workbook.save_to_buffer().unwrap().to_vec())
+    println!("Saving and sending file to the client for download...");
+
+    let workbook_clone = workbook.clone();
+    let mut workbook_clone_locked = workbook_clone.lock().unwrap();
+
+    workbook_clone_locked.save("output.xlsx").unwrap();
+
+    Ok(workbook_clone_locked.save_to_buffer().unwrap().to_vec())
 }
