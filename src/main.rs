@@ -7,6 +7,7 @@ use axum::{
     routing::post,
     Router,
 };
+use axum_macros::debug_handler;
 use excel_merge::ApiDoc;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
@@ -16,6 +17,7 @@ pub mod error;
 pub mod excel_merge;
 
 #[tokio::main]
+#[debug_handler]
 async fn main() -> anyhow::Result<()> {
     let router = Router::new()
         .route("/merge", post(excel_merge::merge_files))

@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use axum_macros::debug_handler;
 use calamine::{open_workbook_auto_from_rs, DataType, Reader};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rust_xlsxwriter::Workbook;
@@ -63,10 +64,11 @@ impl FileData {
         (status = 200, description = "Merge Excel files")
     )
 )]
+#[debug_handler]
 pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, AppError> {
     println!("Merge requested. Processing files...");
 
-    let mut rows_hash: HashMap<String, FileData> = HashMap::new();
+    let rows_hash: HashMap<String, FileData> = HashMap::new();
     let mut cutting_rows: u32 = 0;
 
     while let Some(field) = multipart.next_field().await.unwrap() {
@@ -90,11 +92,14 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
 
             let file_name = name.split("-").next().unwrap().to_string();
 
-            if rows_hash.contains_key(&file_name) {
-                let val = rows_hash.get_mut(&file_name).unwrap();
+            let rows_hash_clone = rows_hash.clone();
+            let mut rows_hash_clone_locked = rows_hash_clone.lock().unwrap();
+            if rows_hash_clone_locked.contains_key(&file_name) {
+                let val = rows_hash_clone_locked.get_mut(&file_name).unwrap();
                 val.last_modified = date;
             } else {
-                rows_hash.insert(file_name.to_owned(), FileData::new(date, Vec::new()));
+                rows_hash_clone_locked
+                    .insert(file_name.to_owned(), FileData::new(date, Vec::new()));
             }
         }
 
@@ -112,32 +117,28 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
         {
             let bytes = bytes.to_vec();
 
-            tokio::task::spawn_blocking(move || {
-                let reader = Cursor::new(bytes);
-                let mut workbook = open_workbook_auto_from_rs(reader).unwrap();
+            let reader = Cursor::new(bytes);
+            let mut workbook = open_workbook_auto_from_rs(reader).unwrap();
 
-                if let Some(range) = workbook.worksheet_range_at(0) {
-                    let sheet = range.unwrap();
-                    let rows: Vec<_> = sheet
-                        .to_owned()
-                        .rows()
-                        .into_iter()
-                        .map(|slice| slice.to_vec())
-                        .collect();
+            if let Some(range) = workbook.worksheet_range_at(0) {
+                let sheet = range.unwrap();
+                let rows: Vec<_> = sheet
+                    .to_owned()
+                    .rows()
+                    .into_iter()
+                    .map(|slice| slice.to_vec())
+                    .collect();
 
-                    if rows_hash.contains_key(&other_name) {
-                        let val = rows_hash.get_mut(&other_name).unwrap();
-                        val.data = rows;
-                    } else {
-                        rows_hash.insert(
-                            other_name.to_owned(),
-                            FileData::new("unkown".to_string(), rows),
-                        );
-                    }
+                if rows_hash.contains_key(&other_name) {
+                    let val = rows_hash.get_mut(&other_name).unwrap();
+                    val.data = rows;
+                } else {
+                    rows_hash.insert(
+                        other_name.to_owned(),
+                        FileData::new("unkown".to_string(), rows),
+                    );
                 }
-            })
-            .await
-            .unwrap();
+            }
         }
     }
 
@@ -235,8 +236,7 @@ pub async fn merge_files(mut multipart: Multipart) -> Result<impl IntoResponse, 
         let worksheet = workbook_clone_locked.add_worksheet();
         worksheet.write_row_matrix(0, 0, &values_rows).unwrap();
     })
-    .await
-    .unwrap();
+    .await;
 
     println!("Saving and sending file to the client for download...");
 
