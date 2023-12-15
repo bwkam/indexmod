@@ -1,6 +1,5 @@
 use std::{
     fs::{self, File},
-    io::Cursor,
     path::Path,
     sync::Arc,
 };
@@ -8,9 +7,9 @@ use std::{
 use crate::error::Result;
 use axum::{extract::Multipart, response::IntoResponse};
 // use axum_macros::debug_handler;
-use calamine::{open_workbook_auto_from_rs, DataType};
+use calamine::DataType;
 use chrono::NaiveDateTime;
-use excel_merge::create_file_vec;
+use excel_merge::FilesMap;
 use rust_xlsxwriter::Workbook;
 use std::io::Write;
 use std::sync::Mutex;
@@ -30,12 +29,12 @@ pub struct ApiDoc;
 pub async fn merge_files(multipart: Multipart) -> Result<impl IntoResponse> {
     println!("Merge requested. Processing files...");
 
-    let tuple_result = create_file_vec(multipart).await;
+    let files_map = FilesMap::new(multipart).await;
 
-    let mut files_to_merge = tuple_result.0;
-    let sort_by_date = tuple_result.1;
-    let sort_by_file = tuple_result.2;
-    let cutting_rows = tuple_result.3;
+    let mut files_to_merge = files_map.files;
+    let sort_by_date = files_map.sort_by_date;
+    let sort_by_file = files_map.sort_by_file;
+    let cutting_rows = files_map.cutting_rows;
 
     // before
     println!("Before sorting...");

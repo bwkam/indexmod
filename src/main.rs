@@ -26,7 +26,7 @@ struct IndexTemplate {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     let router = Router::new()
         .route("/merge", post(excel_merge::merge_files))
         .route("/", get(index))
@@ -45,8 +45,6 @@ async fn main() -> anyhow::Result<()> {
         .serve(router.into_make_service())
         .await
         .unwrap();
-
-    Ok(())
 }
 
 async fn index() -> Result<impl IntoResponse, AppError> {
