@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Excel Merge</title>
+
+    <style>
+      input[type="file"] {
+        display: none;
+      }
+
+      ul {
+        padding-block: 10px;
+      }
+
+      li {
+        display: flex;
+        justify-content: space-between;
+      }
+    </style>
+  </head>
+  <body>
+    <form>
+      <div style="margin-bottom: 20px">
+        <label for="main-file">Main files</label>
+
+        <input
+          type="file"
+          id="main-file"
+          name="main-file"
+          accept=".xlsx, .xls"
+        />
+
+        <ul id="main-file-list"></ul>
+        <button type="button" id="add-main-file">Add main file</button>
+      </div>
+
+      <h1 id="loading" style="display: none">Loading...</h1>
+
+      <label for="excel-file"></label>
+      <input
+        type="file"
+        id="excel-file"
+        name="excel-file"
+        accept=".xlsx, .xls"
+        multiple
+      />
+      <label for="cutting-rows">Cutting Rows:</label>
+      <input type="number" id="cutting-rows" name="cutting-rows" />
+      <button type="button" id="add-excel">Add Excel</button>
+
+      <label for="zip-input"></label>
+      <input type="file" id="zip-input" name="zip-input" accept=".zip" />
+      <button type="button" id="add-zip">Add Zip</button>
+
+      <ul id="excel-list"></ul>
+      <button type="submit" id="submit-excel">Run</button>
+      <input type="checkbox" id="sortByDateCheckbox" />
+      <label for="sortByDateCheckbox">Sort by date</label>
+      <input type="checkbox" id="sortByFileCheckbox" />
+      <label for="sortByFileCheckbox">Sort by file</label>
+    </form>
+    <script type="module">
+      import {
+        ZipReader,
+        BlobReader,
+        BlobWriter,
+      } from "https://unpkg.com/@zip.js/zip.js/index.js";
+
+      const addExcelButton = document.getElementById("add-excel");
+
+      const mainFileList = document.getElementById("main-file-list");
+      const mainFileInput = document.getElementById("main-file");
+      const zipFileInput = document.getElementById("zip-input");
+      const addMainFileButton = document.getElementById("add-main-file");
+
+      const excelList = document.getElementById("excel-list");
+      const excelFileInput = document.getElementById("excel-file");
+      const submitExcelButton = document.getElementById("submit-excel");
+      const cuttingRows = document.getElementById("cutting-rows");
+      const getZipButton = document.getElementById("add-zip");
+
+      const sortByDateCheckbox = document.getElementById("sortByDateCheckbox");
+      const sortByFileCheckbox = document.getElementById("sortByFileCheckbox");
+
+      let loading = false;
+
+      let firstHeaders;
+      let mainFileName;
+      let excelFilesToUpload = [];
+
+      const formData = new FormData();
+
+      var reader = new FileReader();
+
+      window.onload = () => {
+        cuttingRows.value = "";
+      };
+
+      function formatDate(date, format) {
+        const map = {
+          mm: date.getMonth() + 1,
+          dd: date.getDate(),
+          yy: date.getFullYear().toString().slice(-2),
+          yyy: date.getFullYear(),
+        };
+
+        return format.replace(/mm|dd|yy|yyy/gi, (matched) => map[matched]);
+      }
+
+      function getDate(timeRaw, ms_dos) {
+        let date_obj;
+        let date;
+        let time;
+
+        if (ms_dos) {
+          (date = (timeRaw & 0xffff0000) >> 16), (time = timeRaw & 0x0000ffff);
+          try {
+            date_obj = new Date(
+              1980 + ((date & 0xfe00) >> 9),
+              ((date & 0x01e0) >> 5) - 1,
+              date & 0x001f,
+              (time & 0xf800) >> 11,
+              (time & 0x07e0) >> 5,
+              (time & 0x001f) * 2,
+              0
+            );
+          } catch (_error) {
+            // ignored
+          }
+        } else {
+          date_obj = new Date(timeRaw);
+        }
+
+        const year = date_obj.getFullYear();
+        const month = String(date_obj.getMonth() + 1).padStart(2, "0");
+        const day = String(date_obj.getDate()).padStart(2, "0");
+        const hours = String(date_obj.getHours()).padStart(2, "0");
+        const minutes = String(date_obj.getMinutes()).padStart(2, "0");
+
+        const formattedDate = `${year} ${month} ${day} ${hours}${minutes}`;
+        return formattedDate;
+      }
+
+      function makeid(length) {
+        let result = "";
+        const characters =
+          "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        const charactersLength = characters.length;
+        let counter = 0;
+        while (counter < length) {
+          result += characters.charAt(
+            Math.floor(Math.random() * charactersLength)
+          );
+          counter += 1;
+        }
+        return result;
+      }
+
+      const loadingElement = document.getElementById("loading");
+
+      function setLoading(loading) {
+        if (loading) {
+          loadingElement.style.display = "block";
+          document.title = "Loading... | Excel Merge";
+        } else {
+          loadingElement.style.display = "none";
+          document.title = "Excel Merge";
+        }
+      }
+
+      const readExcel = async (file, index) => {
+        return await file.text();
+      };
+
+      zipFileInput.addEventListener("change", async (e) => {
+        const zipReader = new ZipReader(new BlobReader(e.target.files[0]));
+        const entries = await zipReader.getEntries();
+        entries.forEach(async (entry) => {
+          let id = makeid(10);
+          let writer;
+          let mime;
+
+          if (entry.filename.endsWith(".xlsx")) {
+            writer = new BlobWriter(
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            );
+            mime =
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+          } else if (entry.filename.endsWith(".xls")) {
+            writer = new BlobWriter("application/vnd.ms-excel");
+            mime = "application/vnd.ms-excel";
+          }
+
+          let blob = new Blob([await entry.getData(writer)], {
+            type: mime,
+          });
+          let file = new File([blob], entry.filename, {
+            type: mime,
+          });
+
+          formData.append(id, file);
+
+          let rawDate = await entry.rawLastModDate;
+
+          const date = getDate(rawDate, true);
+
+          formData.append(`${id}(LM)`, date);
+
+          const div = document.createElement("div");
+
+          const li = document.createElement("li");
+          const a = document.createElement("a");
+          const getFileButton = document.createElement("button");
+
+          getFileButton.textContent = "Get File";
+          getFileButton.addEventListener("click", (e) => {
+            e.preventDefault();
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = file.name;
+            a.click();
+          });
+
+          li.textContent = file.name;
+          excelList.appendChild(li);
+
+          const button = document.createElement("button");
+          button.textContent = "X";
+          button.addEventListener("click", () => {
+            li.remove();
+            formData.delete(id);
+            formData.delete(`${id}(LM)`);
+            console.log(formData);
+          });
+
+          div.appendChild(button);
+          div.appendChild(getFileButton);
+
+          li.appendChild(div);
+        });
+
+        console.log(formData);
+
+        await zipReader.close();
+      });
+
+      addExcelButton.addEventListener("click", () => {
+        excelFileInput.click();
+      });
+
+      getZipButton.addEventListener("click", () => {
+        zipFileInput.click();
+      });
+
+      function fileListFrom(files) {
+        const b = new ClipboardEvent("").clipboardData || new DataTransfer();
+        for (const file of files) b.items.add(file);
+        return b.files;
+      }
+
+      sortByDateCheckbox.addEventListener("change", (e) => {
+        if (e.target.checked) {
+          formData.append("sort_by_date", true);
+        } else {
+          formData.delete("sort_by_date");
+        }
+      });
+
+      sortByFileCheckbox.addEventListener("change", (e) => {
+        if (e.target.checked) {
+          formData.append("sort_by_file", true);
+        } else {
+          formData.delete("sort_by_file");
+        }
+      });
+
+      cuttingRows.addEventListener("change", (e) => {
+        formData.delete("cuttingRows");
+        formData.append("cuttingRows", e.target.value);
+      });
+
+      excelFileInput.addEventListener("change", async (e) => {
+        const files = e.target.files;
+
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          let id = makeid(10);
+          console.log(`Adding  file to form: ${file.name}`, file);
+
+          const date = getDate(file.lastModified, false);
+
+          formData.append(id, file);
+          formData.append(`${id}(LM)`, date);
+
+          const div = document.createElement("div");
+
+          const li = document.createElement("li");
+          const a = document.createElement("a");
+          const getFileButton = document.createElement("button");
+
+          getFileButton.textContent = "Get File";
+          getFileButton.addEventListener("click", (e) => {
+            e.preventDefault();
+
+            const blob = new Blob([e.target.value], { type: e.target.type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = file.name;
+            a.click();
+          });
+
+          li.textContent = file.name;
+          excelList.appendChild(li);
+
+          const button = document.createElement("button");
+          button.textContent = "X";
+          button.addEventListener("click", () => {
+            li.remove();
+            formData.delete(id);
+            formData.delete(`${id}(LM)`);
+            console.log(formData);
+          });
+
+          div.appendChild(button);
+          div.appendChild(getFileButton);
+
+          li.appendChild(div);
+
+          console.log(formData);
+        }
+      });
+
+      addMainFileButton.addEventListener("click", () => {
+        mainFileInput.click();
+      });
+
+      mainFileInput.addEventListener("change", async (e) => {
+        const files = mainFileInput.files;
+        for (let i = 0; i < files.length; i++) {
+          let id = makeid(10);
+          const file = files[i];
+
+          const date = getDate(file.lastModified, false);
+
+          formData.append(id + "-MAIN", file);
+          formData.append(`${id}-MAIN(LM)`, date);
+
+          console.log(formData);
+
+          const li = document.createElement("li");
+
+          mainFileName = file.name;
+          li.textContent = file.name;
+          mainFileList.appendChild(li);
+
+          const button = document.createElement("button");
+          button.textContent = "X";
+          button.addEventListener("click", () => {
+            li.remove();
+            formData.delete(id + "-MAIN");
+            formData.delete(`${id}-MAIN(LM)`);
+            console.log(formData);
+          });
+
+          li.appendChild(button);
+        }
+      });
+
+      submitExcelButton.addEventListener("click", async (e) => {
+        e.preventDefault();
+        loading = true;
+        setLoading(true);
+
+        formData.append("cuttingRows", cuttingRows.value);
+
+        console.log(formData);
+
+        console.log("We're sending a request to the server.");
+        const res = await fetch("http://localhost:8080/merge", {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) {
+          const error = await res.json();
+          alert(error.message);
+          throw error;
+        }
+
+        console.log(
+          "Received the response, parsing and downloading the output."
+        );
+
+        var date = new Date();
+        var time = new Date()
+          .toLocaleTimeString("en-US", {
+            timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            hour12: false,
+            hour: "numeric",
+            minute: "numeric",
+          })
+          .replace(":", "");
+
+        console.log(time);
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${mainFileName.replace(".xlsx", "")}-merge${formatDate(
+          date,
+          "mmddyy"
+        )}${time.trim()}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+
+        console.log("Done!");
+
+        loading = false;
+        setLoading(loading);
+      });
+    </script>
+  </body>
+</html>

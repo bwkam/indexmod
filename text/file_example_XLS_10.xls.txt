@@ -1,0 +1,9 @@
+2023 12 14 1858,2,10,2-1,file_example_XLS_10.xls,1,Dulce,Abril,Female,United States,32,15/10/2017,1562
+2023 12 14 1858,2,11,2-2,file_example_XLS_10.xls,2,Mara,Hashimoto,Female,Great Britain,25,16/08/2016,1582
+2023 12 14 1858,2,12,2-3,file_example_XLS_10.xls,3,Philip,Gent,Male,France,36,21/05/2015,2587
+2023 12 14 1858,2,13,2-4,file_example_XLS_10.xls,4,Kathleen,Hanner,Female,United States,25,15/10/2017,3549
+2023 12 14 1858,2,14,2-5,file_example_XLS_10.xls,5,Nereida,Magwood,Female,United States,58,16/08/2016,2468
+2023 12 14 1858,2,15,2-6,file_example_XLS_10.xls,6,Gaston,Brumm,Male,United States,24,21/05/2015,2554
+2023 12 14 1858,2,16,2-7,file_example_XLS_10.xls,7,Etta,Hurn,Female,Great Britain,56,15/10/2017,3598
+2023 12 14 1858,2,17,2-8,file_example_XLS_10.xls,8,Earlean,Melgar,Female,United States,27,16/08/2016,2456
+2023 12 14 1858,2,18,2-9,file_example_XLS_10.xls,9,Vincenza,Weiland,Female,United States,40,21/05/2015,6548

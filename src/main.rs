@@ -1,13 +1,16 @@
+use axum::response::IntoResponse;
 use axum::{
     extract::DefaultBodyLimit,
     http::{
         header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, LAST_MODIFIED},
         HeaderValue, Method,
     },
+    routing::get,
     routing::post,
     Router,
 };
-use axum_macros::debug_handler;
+use error::AppError;
+// use axum_macros::debug_handler;
 use excel_merge::ApiDoc;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
@@ -16,11 +19,17 @@ use utoipa_swagger_ui::SwaggerUi;
 pub mod error;
 pub mod excel_merge;
 
+#[derive(askama::Template)]
+#[template(path = "index.html")]
+struct IndexTemplate {
+    // name: String,
+}
+
 #[tokio::main]
-#[debug_handler]
 async fn main() -> anyhow::Result<()> {
     let router = Router::new()
         .route("/merge", post(excel_merge::merge_files))
+        .route("/", get(index))
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
         .layer(
             CorsLayer::new()
@@ -38,4 +47,12 @@ async fn main() -> anyhow::Result<()> {
         .unwrap();
 
     Ok(())
+}
+
+async fn index() -> Result<impl IntoResponse, AppError> {
+    println!("Hello, world!");
+    let template = IndexTemplate {
+        // name: "world".to_string(),
+    };
+    Ok(template)
 }
