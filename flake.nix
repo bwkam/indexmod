@@ -51,6 +51,7 @@
             cargo
             cargo-watch
             cargo-shuttle
+            cargo-expand
             clippy
             rust-analyzer
             pkg-config

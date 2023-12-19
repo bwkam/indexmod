@@ -387,7 +387,7 @@
         });
         if (!res.ok) {
           const error = await res.json();
-          alert(error.message);
+          alert(error.error);
           throw error;
         }
 
