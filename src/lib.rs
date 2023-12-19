@@ -4,18 +4,27 @@ use std::{io::Cursor, path::Path};
 use crate::error::{Error, Result};
 use anyhow::Context;
 use axum::extract::Multipart;
-use calamine::{DataType, Range, Reader};
+use calamine::{DataType, Reader};
 use chrono::NaiveDateTime;
 use indexmap::IndexMap;
 use rust_xlsxwriter::Workbook;
 
+pub mod api;
 pub mod error;
-pub mod excel_merge;
+
+pub mod routes;
 
 #[derive(Clone, Debug)]
 enum SortBy {
     Date,
     File,
+}
+
+#[derive(Clone, Debug)]
+pub struct Search {
+    pub data: String,
+    pub title: Option<String>,
+    pub intersections: Vec<Search>,
 }
 
 #[derive(Clone, Debug)]
@@ -50,12 +59,26 @@ pub struct FilesMap {
     pub sort_by_date: bool,
     pub sort_by_file: bool,
     pub cutting_rows: usize,
-    pub sheet_range: Option<Range<DataType>>,
 }
 
 impl FilesMap {
+    pub fn new(
+        files: IndexMap<String, File>,
+        sort_by_date: bool,
+        sort_by_file: bool,
+        cutting_rows: usize,
+    ) -> Result<Self> {
+        Ok(Self {
+            files,
+            sort_by_date,
+            sort_by_file,
+            cutting_rows,
+        })
+    }
+
+    // TODO: impl From<Multipart> for FilesMap, i.e make this a more sort of library-generic function
     /// Creates a new files map struct from a multipart form argument
-    pub async fn new(mut multipart: Multipart) -> Result<Self> {
+    pub async fn from_multipart(mut multipart: Multipart) -> Result<Self> {
         let mut files_to_merge: IndexMap<String, File> = IndexMap::new();
         let mut cutting_rows: usize = 0;
         let mut sort_by_date: bool = false;
@@ -186,7 +209,6 @@ impl FilesMap {
             sort_by_date,
             sort_by_file,
             cutting_rows,
-            sheet_range: None,
         })
     }
 
@@ -400,7 +422,7 @@ impl FilesMap {
         Ok(values_rows)
     }
 
-    /// save the merged files to a buffer
+    /// save the merged file to a buffer
     pub fn save_to_buf(&mut self) -> Result<Vec<u8>> {
         let mut workbook = Workbook::new();
         let worksheet = workbook.add_worksheet();
@@ -417,5 +439,50 @@ impl FilesMap {
             .to_vec();
 
         Ok(buf)
+    }
+
+    /// search
+    pub fn search(&mut self, search: &[Search]) -> Result<Vec<Vec<String>>> {
+        let rows = self.merge().unwrap();
+
+        // FIXME: I don't remember
+        let headers = &rows.clone()[0];
+        let mut filtered_rows: Vec<Vec<String>> = vec![];
+
+        for row in rows {
+            let mut is_matched = false;
+
+            for search in search {
+                if row.contains(&search.data) {
+                    let index = row.iter().position(|x| x == &search.data).unwrap();
+
+                    if let Some(title) = &search.title {
+                        is_matched = headers[index] == *title
+                    }
+
+                    if is_matched && !search.intersections.is_empty() {
+                        search.intersections.iter().for_each(|search| {
+                            if row.contains(&search.clone().data) {
+                                let index = row
+                                    .iter()
+                                    .position(|x| x == &search.data.to_string())
+                                    .unwrap();
+
+                                if let Some(title) = &search.title {
+                                    is_matched = headers[index] == *title;
+                                }
+                            }
+                        })
+                    }
+
+                    if is_matched {
+                        filtered_rows.push(row[index..].to_vec());
+                    }
+                }
+            }
+        }
+
+        // filtered_rows.insert(0, headers.to_vec())
+        Ok(filtered_rows)
     }
 }

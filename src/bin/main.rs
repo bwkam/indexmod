@@ -10,6 +10,7 @@ use axum::{
     Router,
 };
 use excel_merge::error::Result;
+use excel_merge::routes;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 use tracing::info;
@@ -31,7 +32,7 @@ async fn main() {
 
     // FIXME: fix swagger ui
     let router = Router::new()
-        .route("/merge", post(excel_merge::excel_merge::merge_files))
+        .route("/merge", post(routes::merge::merge_files))
         .route("/", get(index))
         // .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
         .layer(
