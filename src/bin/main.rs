@@ -23,6 +23,7 @@ struct IndexTemplate {
 }
 
 #[tokio::main]
+//TODO: Factor all the Vecs to slices, and Strings to AsRef<&str>
 async fn main() {
     let trace_sub = tracing_subscriber::FmtSubscriber::builder()
         .with_env_filter(EnvFilter::new("excel_merge=debug"))

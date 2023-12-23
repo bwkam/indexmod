@@ -1,10 +1,11 @@
+use std::cell::RefCell;
 use std::io::Write;
 use std::{io::Cursor, path::Path};
 
 use crate::error::{Error, Result};
 use anyhow::Context;
 use axum::extract::Multipart;
-use calamine::{DataType, Reader};
+use calamine::Reader;
 use chrono::NaiveDateTime;
 use indexmap::IndexMap;
 use rust_xlsxwriter::Workbook;
@@ -13,6 +14,38 @@ pub mod api;
 pub mod error;
 
 pub mod routes;
+pub struct FileRange(calamine::Range<calamine::DataType>);
+
+pub trait IntoVec {
+    fn into_vec(self) -> Vec<Vec<String>>;
+}
+
+impl IntoVec for FileRange {
+    fn into_vec(self) -> Vec<Vec<String>> {
+        self.0
+            .rows()
+            .map(|row| {
+                row.iter()
+                    .map(|cell| match cell {
+                        calamine::DataType::String(s) => s.clone(),
+                        calamine::DataType::Float(f) => f.to_string(),
+                        calamine::DataType::Int(i) => i.to_string(),
+                        calamine::DataType::Bool(b) => b.to_string(),
+                        calamine::DataType::Error(e) => e.to_string(),
+                        calamine::DataType::Empty => "".to_string(),
+                        _ => "".to_string(),
+                    })
+                    .collect::<Vec<String>>()
+            })
+            .collect()
+    }
+}
+
+impl From<calamine::Range<calamine::DataType>> for FileRange {
+    fn from(range: calamine::Range<calamine::DataType>) -> Self {
+        FileRange(range)
+    }
+}
 
 #[derive(Clone, Debug)]
 enum SortBy {
@@ -32,18 +65,13 @@ pub struct Search {
 pub struct File {
     pub last_modified: String,
     pub name: String,
-    pub rows: Vec<Vec<DataType>>,
+    pub rows: Vec<Vec<String>>,
     pub is_main: bool,
 }
 
 impl File {
     /// Creates a new file struct
-    pub fn new(
-        name: String,
-        last_modified: String,
-        rows: Vec<Vec<DataType>>,
-        is_main: bool,
-    ) -> Self {
+    pub fn new(name: String, last_modified: String, rows: Vec<Vec<String>>, is_main: bool) -> Self {
         File {
             last_modified,
             rows,
@@ -59,6 +87,23 @@ pub struct FilesMap {
     pub sort_by_date: bool,
     pub sort_by_file: bool,
     pub cutting_rows: usize,
+}
+
+pub trait Searchable {
+    fn get_data(&self) -> Vec<Vec<String>>;
+}
+
+impl Searchable for RefCell<FilesMap> {
+    fn get_data(&self) -> Vec<Vec<String>> {
+        let data = self.borrow_mut().merge().unwrap();
+        data
+    }
+}
+
+impl Searchable for Vec<Vec<String>> {
+    fn get_data(&self) -> Vec<Vec<String>> {
+        self.clone()
+    }
 }
 
 impl FilesMap {
@@ -178,12 +223,9 @@ impl FilesMap {
                 }
 
                 if let Some(range) = workbook.worksheet_range_at(0) {
-                    let sheet = range.unwrap();
-                    let rows: Vec<_> = sheet
-                        .to_owned()
-                        .rows()
-                        .map(|slice| slice.to_vec())
-                        .collect();
+                    let sheet: FileRange = range.unwrap().into();
+                    // TODO: Factor this out to a seperate re-usable function
+                    let rows: Vec<_> = sheet.into_vec();
 
                     // print cutting rows
                     println!("Cutting Rows: {:?}", cutting_rows);
@@ -308,15 +350,7 @@ impl FilesMap {
             .first()
             .unwrap()
             .iter()
-            .map(|data| match data {
-                DataType::String(s) => s.to_string(),
-                DataType::Float(f) => f.to_string(),
-                DataType::Int(i) => i.to_string(),
-                DataType::Bool(b) => b.to_string(),
-                DataType::Error(e) => e.to_string(),
-                DataType::Empty => "".to_string(),
-                _ => "".to_string(),
-            })
+            .map(|data| data.to_owned())
             .collect();
 
         println!("Merging files...");
@@ -358,18 +392,8 @@ impl FilesMap {
                     .enumerate()
                     .map(|(j, file)| {
                         let mut intro_headers = vec![];
-                        let mut cur_row_values: Vec<String> = file
-                            .iter()
-                            .map(|row_data| match row_data {
-                                DataType::String(s) => s.to_string(),
-                                DataType::Float(f) => f.to_string(),
-                                DataType::Int(i) => i.to_string(),
-                                DataType::Bool(b) => b.to_string(),
-                                DataType::Error(e) => e.to_string(),
-                                DataType::Empty => "".to_string(),
-                                _ => "".to_string(),
-                            })
-                            .collect();
+                        let mut cur_row_values: Vec<String> =
+                            file.iter().map(|row_data| row_data.to_owned()).collect();
 
                         intro_headers.push(inner_vec.last_modified.to_owned());
                         intro_headers.push((i + 1).to_string());
@@ -441,9 +465,9 @@ impl FilesMap {
         Ok(buf)
     }
 
-    /// search
-    pub fn search(&mut self, search: &[Search]) -> Result<Vec<Vec<String>>> {
-        let rows = self.merge().unwrap();
+    /// search and filter out the matched rows
+    pub fn search<T: Searchable>(searchable: &T, search: &[Search]) -> Result<Vec<Vec<String>>> {
+        let rows = searchable.get_data();
 
         // FIXME: I don't remember
         let headers = &rows.clone()[0];
@@ -451,15 +475,23 @@ impl FilesMap {
 
         for row in rows {
             let mut is_matched = false;
-
             for search in search {
                 if row.contains(&search.data) {
                     let index = row.iter().position(|x| x == &search.data).unwrap();
 
+                    // data is matched, check other things now
+                    is_matched = true;
+
+                    // title
                     if let Some(title) = &search.title {
-                        is_matched = headers[index] == *title
+                        is_matched = headers[index] == *title;
+                        // if the title doesn't match, then break out of it, it's not what we want
+                        if !is_matched {
+                            continue;
+                        }
                     }
 
+                    // intersections
                     if is_matched && !search.intersections.is_empty() {
                         search.intersections.iter().for_each(|search| {
                             if row.contains(&search.clone().data) {
@@ -475,6 +507,7 @@ impl FilesMap {
                         })
                     }
 
+                    // we push the row if it's matched and cut it
                     if is_matched {
                         filtered_rows.push(row[index..].to_vec());
                     }
