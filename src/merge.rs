@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-use std::io::Write;
 use std::{io::Cursor, path::Path};
 
 use crate::error::{Error, Result};
