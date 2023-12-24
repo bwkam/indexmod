@@ -1,51 +1,20 @@
-use std::cell::RefCell;
-use std::io::Write;
-use std::{io::Cursor, path::Path};
+use std::{borrow::Cow, io::Cursor, path::Path};
 
 use crate::error::{Error, Result};
-use anyhow::Context;
+use crate::merge::MergeFiles;
+
 use axum::extract::Multipart;
-use calamine::Reader;
+use calamine::{DataType, Reader};
 use chrono::NaiveDateTime;
 use indexmap::IndexMap;
-use rust_xlsxwriter::Workbook;
+use search::{Search, SearchFiles};
+use std::io::Write;
 
 pub mod api;
 pub mod error;
-
+pub mod merge;
 pub mod routes;
-pub struct FileRange(calamine::Range<calamine::DataType>);
-
-pub trait IntoVec {
-    fn into_vec(self) -> Vec<Vec<String>>;
-}
-
-impl IntoVec for FileRange {
-    fn into_vec(self) -> Vec<Vec<String>> {
-        self.0
-            .rows()
-            .map(|row| {
-                row.iter()
-                    .map(|cell| match cell {
-                        calamine::DataType::String(s) => s.clone(),
-                        calamine::DataType::Float(f) => f.to_string(),
-                        calamine::DataType::Int(i) => i.to_string(),
-                        calamine::DataType::Bool(b) => b.to_string(),
-                        calamine::DataType::Error(e) => e.to_string(),
-                        calamine::DataType::Empty => "".to_string(),
-                        _ => "".to_string(),
-                    })
-                    .collect::<Vec<String>>()
-            })
-            .collect()
-    }
-}
-
-impl From<calamine::Range<calamine::DataType>> for FileRange {
-    fn from(range: calamine::Range<calamine::DataType>) -> Self {
-        FileRange(range)
-    }
-}
+pub mod search;
 
 #[derive(Clone, Debug)]
 enum SortBy {
@@ -53,25 +22,26 @@ enum SortBy {
     File,
 }
 
-#[derive(Clone, Debug)]
-pub struct Search {
-    pub data: String,
-    pub title: Option<String>,
-    pub intersections: Vec<Search>,
-}
-
+// TODO: Implement IntoExcelData and become sane
 #[derive(Clone, Debug)]
 /// A file is a struct that represents a single file to be merged
 pub struct File {
     pub last_modified: String,
     pub name: String,
-    pub rows: Vec<Vec<String>>,
+    // pub rows: Vec<Vec<String>>,
+    // BREAKING:
+    pub rows: Vec<Cow<'static, [DataType]>>,
     pub is_main: bool,
 }
 
 impl File {
     /// Creates a new file struct
-    pub fn new(name: String, last_modified: String, rows: Vec<Vec<String>>, is_main: bool) -> Self {
+    pub fn new(
+        name: String,
+        last_modified: String,
+        rows: Vec<Cow<'static, [DataType]>>,
+        is_main: bool,
+    ) -> Self {
         File {
             last_modified,
             rows,
@@ -87,23 +57,6 @@ pub struct FilesMap {
     pub sort_by_date: bool,
     pub sort_by_file: bool,
     pub cutting_rows: usize,
-}
-
-pub trait Searchable {
-    fn get_data(&self) -> Vec<Vec<String>>;
-}
-
-impl Searchable for RefCell<FilesMap> {
-    fn get_data(&self) -> Vec<Vec<String>> {
-        let data = self.borrow_mut().merge().unwrap();
-        data
-    }
-}
-
-impl Searchable for Vec<Vec<String>> {
-    fn get_data(&self) -> Vec<Vec<String>> {
-        self.clone()
-    }
 }
 
 impl FilesMap {
@@ -123,8 +76,8 @@ impl FilesMap {
 
     // TODO: impl From<Multipart> for FilesMap, i.e make this a more sort of library-generic function
     /// Creates a new files map struct from a multipart form argument
-    pub async fn from_multipart(mut multipart: Multipart) -> Result<Self> {
-        let mut files_to_merge: IndexMap<String, File> = IndexMap::new();
+    pub async fn from_multipart(mut multipart: Multipart) -> Result<FilesMap> {
+        let mut files_to_merge = IndexMap::new();
         let mut cutting_rows: usize = 0;
         let mut sort_by_date: bool = false;
         let mut sort_by_file: bool = false;
@@ -175,12 +128,12 @@ impl FilesMap {
                 // println!("File name (lm): {:?}", &file_name);
 
                 if files_to_merge.contains_key(&file_name) {
-                    let val = files_to_merge.get_mut(&file_name).unwrap();
+                    let val: &mut File = files_to_merge.get_mut(&file_name).unwrap();
                     val.last_modified = date;
                 } else {
                     files_to_merge.insert(
                         file_name.to_owned(),
-                        File::new(other_name.clone(), date, Vec::new(), is_main),
+                        File::new(other_name.clone(), date, vec![], is_main),
                     );
                 }
 
@@ -223,21 +176,21 @@ impl FilesMap {
                 }
 
                 if let Some(range) = workbook.worksheet_range_at(0) {
-                    let sheet: FileRange = range.unwrap().into();
-                    // TODO: Factor this out to a seperate re-usable function
-                    let rows: Vec<_> = sheet.into_vec();
+                    let sheet = range.unwrap();
+                    let rows = sheet.rows().map(|x| Cow::Owned(x.to_vec())).collect();
 
                     // print cutting rows
                     println!("Cutting Rows: {:?}", cutting_rows);
 
                     if files_to_merge.contains_key(&other_name) {
                         let val = files_to_merge.get_mut(&other_name).unwrap();
+                        let rows = rows;
                         val.rows = rows;
                         val.is_main = is_main;
                     } else {
                         files_to_merge.insert(
                             name.replace("-MAIN", "").to_owned(),
-                            File::new(other_name.clone(), "unkown".to_string(), rows, is_main),
+                            File::new(other_name.clone(), "unknown".to_string(), rows, is_main),
                         );
                     }
                 }
@@ -307,7 +260,7 @@ impl FilesMap {
     }
 
     /// merge files into a `Vec<Vec<String>>`
-    fn merge(&mut self) -> Result<Vec<Vec<String>>> {
+    fn merge(&mut self) -> Result<MergeFiles> {
         let mut files_to_merge = self.files.clone();
         let sort_by_date = self.sort_by_date;
         let sort_by_file = self.sort_by_file;
@@ -341,7 +294,7 @@ impl FilesMap {
             writeln!(&mut stats, "Name: {:?}, rows: {:?}", v.name, v.rows.len()).unwrap();
         });
 
-        let mut first_rows: Vec<String> = files_to_merge
+        let mut first_rows: Vec<DataType> = files_to_merge
             .iter()
             .next()
             .unwrap()
@@ -381,47 +334,46 @@ impl FilesMap {
         }
 
         let mut acc_width = 0;
-        let mut values_rows: Vec<Vec<String>> = files_to_merge
+        let mut values_rows: Vec<Vec<DataType>> = files_to_merge
             .iter()
             .enumerate()
             .flat_map(|(i, (_, inner_vec))| {
-                let main_data = inner_vec
+                let main_data: Vec<Vec<DataType>> = inner_vec
                     .rows
                     .iter()
                     .skip(1)
                     .enumerate()
                     .map(|(j, file)| {
-                        let mut intro_headers = vec![];
-                        let mut cur_row_values: Vec<String> =
+                        let mut intro_headers: Vec<DataType> = vec![];
+                        let cur_row_values: Vec<DataType> =
                             file.iter().map(|row_data| row_data.to_owned()).collect();
 
-                        intro_headers.push(inner_vec.last_modified.to_owned());
-                        intro_headers.push((i + 1).to_string());
-                        intro_headers.push((acc_width + 1).to_string());
                         intro_headers
-                            .push((i + 1).to_string() + "-" + ((j) + 1).to_string().as_str());
-                        intro_headers.push(inner_vec.name.replace("-MAIN", ""));
-
-                        let mut vec: Vec<String> = vec![];
-                        vec.append(&mut intro_headers);
-                        vec.append(&mut cur_row_values);
+                            .push(DataType::DateTimeIso(inner_vec.last_modified.to_owned()));
+                        intro_headers.push(DataType::Int((i + 1) as i64));
+                        intro_headers.push(DataType::Int((acc_width + 1) as i64));
+                        intro_headers.push(DataType::String(
+                            (i + 1).to_string() + "-" + ((j) + 1).to_string().as_str(),
+                        ));
+                        intro_headers.push(DataType::String(inner_vec.name.replace("-MAIN", "")));
 
                         acc_width += 1;
 
-                        vec
+                        [intro_headers, cur_row_values].concat()
                     })
-                    .collect::<Vec<Vec<String>>>();
+                    .collect();
 
-                let directory = Path::new("text");
-                let file_path = directory.join(format!("{}.txt", &inner_vec.name));
+                // let directory = Path::new("text");
 
-                // Open the file in write mode
-                let mut file = std::fs::File::create(&file_path).unwrap();
+                // let file_path = directory.join(format!("{}.txt", &inner_vec.name));
 
-                for row in &main_data {
-                    let line = row.join(",");
-                    writeln!(&mut file, "{}", line).unwrap();
-                }
+                // // Open the file in write mode
+                // let mut file = std::fs::File::create(&file_path).unwrap();
+
+                // for row in &main_data {
+                //     let line = row.join(",");
+                //     writeln!(&mut file, "{}", line).unwrap();
+                // }
 
                 main_data
             })
@@ -436,56 +388,39 @@ impl FilesMap {
             "File Name",
         ]
         .iter()
-        .map(|x| x.to_string())
-        .collect::<Vec<String>>();
+        .map(|x| DataType::String(x.to_string()))
+        .collect::<Vec<DataType>>();
 
         extra_headers.append(&mut first_rows);
 
         values_rows.insert(0, extra_headers);
 
-        Ok(values_rows)
-    }
-
-    /// save the merged file to a buffer
-    pub fn save_to_buf(&mut self) -> Result<Vec<u8>> {
-        let mut workbook = Workbook::new();
-        let worksheet = workbook.add_worksheet();
-
-        let values_rows = self.merge()?;
-
-        worksheet
-            .write_row_matrix(0, 0, &values_rows)
-            .context("Failed to write to workbook")?;
-
-        let buf = workbook
-            .save_to_buffer()
-            .context("Failed to save workbook to buffer")?
-            .to_vec();
-
-        Ok(buf)
+        Ok(MergeFiles { rows: values_rows })
     }
 
     /// search and filter out the matched rows
-    pub fn search<T: Searchable>(searchable: &T, search: &[Search]) -> Result<Vec<Vec<String>>> {
-        let rows = searchable.get_data();
-
+    pub fn search(data: Vec<&[DataType]>, search: &[Search]) -> Result<SearchFiles> {
         // FIXME: I don't remember
-        let headers = &rows.clone()[0];
-        let mut filtered_rows: Vec<Vec<String>> = vec![];
+        let headers = &data.clone()[0];
+        let mut filtered_rows: Vec<Vec<DataType>> = vec![];
 
-        for row in rows {
+        for row in &data {
             let mut is_matched = false;
             for search in search {
-                if row.contains(&search.data) {
-                    let index = row.iter().position(|x| x == &search.data).unwrap();
+                // TODO: see if this makes a problem with non-string types
+                if row.contains(&DataType::String(search.data.to_owned())) {
+                    let index = row
+                        .iter()
+                        .position(|x| x == &DataType::String(search.data.to_owned()))
+                        .unwrap();
 
                     // data is matched, check other things now
                     is_matched = true;
 
                     // title
                     if let Some(title) = &search.title {
-                        is_matched = headers[index] == *title;
-                        // if the title doesn't match, then break out of it, it's not what we want
+                        is_matched = headers[index] == DataType::String(title.to_owned());
+                        // if the title doesn't match, then skip this iteration, it's not what we want
                         if !is_matched {
                             continue;
                         }
@@ -493,29 +428,49 @@ impl FilesMap {
 
                     // intersections
                     if is_matched && !search.intersections.is_empty() {
+                        println!("we are in intersections");
+
                         search.intersections.iter().for_each(|search| {
-                            if row.contains(&search.clone().data) {
+                            if row.contains(&DataType::String(search.clone().data)) {
+                                println!("the row matched data: {:?}", &search.data);
+
                                 let index = row
                                     .iter()
-                                    .position(|x| x == &search.data.to_string())
+                                    .position(|x| x == &DataType::String(search.data.to_string()))
                                     .unwrap();
 
+                                println!("index matched: {:?}", &index);
+
                                 if let Some(title) = &search.title {
-                                    is_matched = headers[index] == *title;
+                                    println!("we be looking for title: {:?}", &title);
+                                    is_matched = headers[index] == DataType::String(title.clone());
+
+                                    if is_matched {
+                                        println!("we found the title: {:?}", &title);
+                                    } else {
+                                        println!("we didn't find the title: {:?}", &title)
+                                    }
                                 }
+                            } else {
+                                is_matched = false;
                             }
                         })
                     }
 
                     // we push the row if it's matched and cut it
                     if is_matched {
-                        filtered_rows.push(row[index..].to_vec());
+                        filtered_rows.push(row.to_vec());
                     }
                 }
             }
         }
 
-        // filtered_rows.insert(0, headers.to_vec())
-        Ok(filtered_rows)
+        filtered_rows.insert(0, headers.to_vec());
+
+        dbg!(&filtered_rows);
+
+        Ok(SearchFiles {
+            rows: filtered_rows,
+        })
     }
 }
