@@ -1,6 +1,7 @@
 use calamine::Reader;
 use calamine::{open_workbook, Xlsx};
-use excel_merge::{FilesMap, Search};
+use excel_merge::search::Search;
+use excel_merge::FilesMap;
 use itertools::Itertools;
 
 // TODO: Generate test files programmatically and handle all cases, also add #[should_panic] tests
