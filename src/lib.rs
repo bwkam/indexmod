@@ -28,8 +28,6 @@ enum SortBy {
 pub struct File {
     pub last_modified: String,
     pub name: String,
-    // pub rows: Vec<Vec<String>>,
-    // BREAKING:
     pub rows: Vec<Cow<'static, [DataType]>>,
     pub is_main: bool,
 }
@@ -74,7 +72,7 @@ impl FilesMap {
         })
     }
 
-    // TODO: impl From<Multipart> for FilesMap, i.e make this a more sort of library-generic function
+    // TODO: impl From<Multipart> for FilesMap, i.e make this a more sorta library-generic function
     /// Creates a new files map struct from a multipart form argument
     pub async fn from_multipart(mut multipart: Multipart) -> Result<FilesMap> {
         let mut files_to_merge = IndexMap::new();
@@ -259,7 +257,7 @@ impl FilesMap {
         }
     }
 
-    /// merge files into a `Vec<Vec<String>>`
+    /// merge files
     fn merge(&mut self) -> Result<MergeFiles> {
         let mut files_to_merge = self.files.clone();
         let sort_by_date = self.sort_by_date;
@@ -348,8 +346,7 @@ impl FilesMap {
                         let cur_row_values: Vec<DataType> =
                             file.iter().map(|row_data| row_data.to_owned()).collect();
 
-                        intro_headers
-                            .push(DataType::DateTimeIso(inner_vec.last_modified.to_owned()));
+                        intro_headers.push(DataType::String(inner_vec.last_modified.to_owned()));
                         intro_headers.push(DataType::Int((i + 1) as i64));
                         intro_headers.push(DataType::Int((acc_width + 1) as i64));
                         intro_headers.push(DataType::String(

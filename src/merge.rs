@@ -1,14 +1,7 @@
-use std::{io::Cursor, path::Path};
-
-use crate::error::{Error, Result};
-use crate::search::{Search, SearchFiles};
-use crate::{File, SortBy};
+use crate::error::Result;
 use anyhow::Context;
-use axum::extract::Multipart;
-use calamine::{DataType, Reader};
-use chrono::NaiveDateTime;
-use indexmap::IndexMap;
-use rust_xlsxwriter::{ExcelDateTime, Workbook};
+use calamine::DataType;
+use rust_xlsxwriter::Workbook;
 
 pub struct MergeFiles {
     pub rows: Vec<Vec<DataType>>,
@@ -28,11 +21,11 @@ impl MergeFiles {
                     DataType::String(s) => worksheet.write_string(i as u32, j as u16, s),
                     DataType::Int(n) => worksheet.write_number(i as u32, j as u16, *n as u32),
                     DataType::Float(f) => worksheet.write_number(i as u32, j as u16, *f),
-                    DataType::DateTimeIso(dt) => worksheet.write_datetime(
-                        i as u32,
-                        j as u16,
-                        ExcelDateTime::parse_from_str(dt).context("Failed to parse date")?,
-                    ),
+                    // DataType::DateTimeIso(dt) => worksheet.write_datetime(
+                    //     i as u32,
+                    //     j as u16,
+                    //     ExcelDateTime::parse_from_str(dt).context("Failed to parse date")?,
+                    // ),
                     _ => worksheet.write_string(i as u32, j as u16, ""),
                 };
             }

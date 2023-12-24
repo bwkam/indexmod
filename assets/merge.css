@@ -1,0 +1,17 @@
+input[type="file"] {
+  display: none;
+}
+
+ul {
+  padding-block: 10px;
+}
+
+#excel-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#excel-list li button {
+  height: 30px;
+}

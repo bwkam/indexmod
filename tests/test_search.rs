@@ -18,7 +18,7 @@ fn search() {
 
     let rows = [rows2, rows1].concat();
 
-    let filtered_rows = FilesMap::search(
+    let _filtered_rows = FilesMap::search(
         rows,
         &[
             Search {

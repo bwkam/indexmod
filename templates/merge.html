@@ -1,24 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <!-- metadata -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Excel Merge</title>
+    <link rel="stylesheet" href="/_assets/merge.css" />
+    <!-- metadata -->
 
-    <style>
-      input[type="file"] {
-        display: none;
-      }
+    <!-- our general utils -->
+    <script src="/_assets/utils.js"></script>
+    <!-- our general utils -->
 
-      ul {
-        padding-block: 10px;
-      }
-
-      li {
-        display: flex;
-        justify-content: space-between;
-      }
-    </style>
+    <!-- dependencies -->
+    <script src="/_assets/zip.min.js"></script>
+    <script src="/_assets/htmx.min.js.js"></script>
+    <script src="/_assets/_hyperscript.min.js.js"></script>
+    <!-- dependencies -->
   </head>
   <body>
     <form>
@@ -48,26 +46,30 @@
       />
       <label for="cutting-rows">Cutting Rows:</label>
       <input type="number" id="cutting-rows" name="cutting-rows" />
-      <button type="button" id="add-excel">Add Excel</button>
+      <button
+        type="button"
+        id="add-excel"
+        _="on click call #excel-file.click()"
+      >
+        Add Excel
+      </button>
 
       <label for="zip-input"></label>
       <input type="file" id="zip-input" name="zip-input" accept=".zip" />
-      <button type="button" id="add-zip">Add Zip</button>
+      <button type="button" id="add-zip" _="on click call #zip-input.click()">
+        Add Zip
+      </button>
 
       <ul id="excel-list"></ul>
       <button type="submit" id="submit-excel">Run</button>
-      <input type="checkbox" id="sortByDateCheckbox" />
+
+      <input name="sort_by_date" type="checkbox" id="sortByDateCheckbox" />
       <label for="sortByDateCheckbox">Sort by date</label>
-      <input type="checkbox" id="sortByFileCheckbox" />
+
+      <input name="sort_by_file" type="checkbox" id="sortByFileCheckbox" />
       <label for="sortByFileCheckbox">Sort by file</label>
     </form>
-    <script type="module">
-      import {
-        ZipReader,
-        BlobReader,
-        BlobWriter,
-      } from "https://unpkg.com/@zip.js/zip.js/index.js";
-
+    <script>
       const addExcelButton = document.getElementById("add-excel");
 
       const mainFileList = document.getElementById("main-file-list");
@@ -80,9 +82,9 @@
       const submitExcelButton = document.getElementById("submit-excel");
       const cuttingRows = document.getElementById("cutting-rows");
       const getZipButton = document.getElementById("add-zip");
-
       const sortByDateCheckbox = document.getElementById("sortByDateCheckbox");
       const sortByFileCheckbox = document.getElementById("sortByFileCheckbox");
+      const loadingElement = document.getElementById("loading");
 
       let loading = false;
 
@@ -96,82 +98,6 @@
 
       window.onload = () => {
         cuttingRows.value = "";
-      };
-
-      function formatDate(date, format) {
-        const map = {
-          mm: date.getMonth() + 1,
-          dd: date.getDate(),
-          yy: date.getFullYear().toString().slice(-2),
-          yyy: date.getFullYear(),
-        };
-
-        return format.replace(/mm|dd|yy|yyy/gi, (matched) => map[matched]);
-      }
-
-      function getDate(timeRaw, ms_dos) {
-        let date_obj;
-        let date;
-        let time;
-
-        if (ms_dos) {
-          (date = (timeRaw & 0xffff0000) >> 16), (time = timeRaw & 0x0000ffff);
-          try {
-            date_obj = new Date(
-              1980 + ((date & 0xfe00) >> 9),
-              ((date & 0x01e0) >> 5) - 1,
-              date & 0x001f,
-              (time & 0xf800) >> 11,
-              (time & 0x07e0) >> 5,
-              (time & 0x001f) * 2,
-              0
-            );
-          } catch (_error) {
-            // ignored
-          }
-        } else {
-          date_obj = new Date(timeRaw);
-        }
-
-        const year = date_obj.getFullYear();
-        const month = String(date_obj.getMonth() + 1).padStart(2, "0");
-        const day = String(date_obj.getDate()).padStart(2, "0");
-        const hours = String(date_obj.getHours()).padStart(2, "0");
-        const minutes = String(date_obj.getMinutes()).padStart(2, "0");
-
-        const formattedDate = `${year} ${month} ${day} ${hours}${minutes}`;
-        return formattedDate;
-      }
-
-      function makeid(length) {
-        let result = "";
-        const characters =
-          "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        const charactersLength = characters.length;
-        let counter = 0;
-        while (counter < length) {
-          result += characters.charAt(
-            Math.floor(Math.random() * charactersLength)
-          );
-          counter += 1;
-        }
-        return result;
-      }
-
-      const loadingElement = document.getElementById("loading");
-
-      function setLoading(loading) {
-        if (loading) {
-          loadingElement.style.display = "block";
-          document.title = "Loading... | Excel Merge";
-        } else {
-          loadingElement.style.display = "none";
-          document.title = "Excel Merge";
-        }
-      }
-
-      const readExcel = async (file, index) => {
-        return await file.text();
       };
 
       zipFileInput.addEventListener("change", async (e) => {
@@ -248,35 +174,21 @@
         await zipReader.close();
       });
 
-      addExcelButton.addEventListener("click", () => {
-        excelFileInput.click();
-      });
+      // sortByDateCheckbox.addEventListener("change", (e) => {
+      //   if (e.target.checked) {
+      //     formData.append("sort_by_date", true);
+      //   } else {
+      //     formData.delete("sort_by_date");
+      //   }
+      // });
 
-      getZipButton.addEventListener("click", () => {
-        zipFileInput.click();
-      });
-
-      function fileListFrom(files) {
-        const b = new ClipboardEvent("").clipboardData || new DataTransfer();
-        for (const file of files) b.items.add(file);
-        return b.files;
-      }
-
-      sortByDateCheckbox.addEventListener("change", (e) => {
-        if (e.target.checked) {
-          formData.append("sort_by_date", true);
-        } else {
-          formData.delete("sort_by_date");
-        }
-      });
-
-      sortByFileCheckbox.addEventListener("change", (e) => {
-        if (e.target.checked) {
-          formData.append("sort_by_file", true);
-        } else {
-          formData.delete("sort_by_file");
-        }
-      });
+      // sortByFileCheckbox.addEventListener("change", (e) => {
+      //   if (e.target.checked) {
+      //     formData.append("sort_by_file", true);
+      //   } else {
+      //     formData.delete("sort_by_file");
+      //   }
+      // });
 
       cuttingRows.addEventListener("change", (e) => {
         formData.delete("cuttingRows");
@@ -381,7 +293,7 @@
         console.log(formData);
 
         console.log("We're sending a request to the server.");
-        const res = await fetch("http://localhost:8080/merge", {
+        const res = await fetch("/api/merge", {
           method: "POST",
           body: formData,
         });
