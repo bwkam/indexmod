@@ -1,2 +1,0 @@
-Name: "file_example_XLS_10.xls", rows: 10
-Name: "file_example_XLS_10.xls", rows: 10

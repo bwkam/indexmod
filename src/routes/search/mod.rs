@@ -3,6 +3,8 @@ use crate::FilesMap;
 use axum::{extract::Multipart, response::IntoResponse};
 use tracing::info;
 
+pub mod template_download;
+
 // TODO: Add an #[instrument] for span tracing
 #[utoipa::path(
     get,
@@ -15,10 +17,9 @@ pub async fn search_files(multipart: Multipart) -> Result<impl IntoResponse> {
     info!("Search requested. Processing files...");
 
     // create the files map object that will handle the merging
-    let mut files_map = FilesMap::from_multipart(multipart).await?;
+    let buffer = FilesMap::search_from_multipart(multipart)
+        .await?
+        .write_to_buffer()?;
 
-    // merge the files and save to a buffer
-    let merged_buf = files_map.merge()?.write_to_buffer()?;
-
-    Ok(merged_buf)
+    Ok(buffer)
 }

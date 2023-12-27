@@ -6,9 +6,8 @@ use crate::merge::MergeFiles;
 use axum::extract::Multipart;
 use calamine::{DataType, Reader};
 use chrono::NaiveDateTime;
-use indexmap::IndexMap;
 use search::{Search, SearchFiles};
-use std::io::Write;
+use serde::Deserialize;
 
 pub mod api;
 pub mod error;
@@ -22,7 +21,11 @@ enum SortBy {
     File,
 }
 
-// TODO: Implement IntoExcelData and become sane
+#[derive(Clone, Debug, Deserialize)]
+pub struct Conditions {
+    pub conditions: Vec<Search>,
+}
+
 #[derive(Clone, Debug)]
 /// A file is a struct that represents a single file to be merged
 pub struct File {
@@ -51,166 +54,19 @@ impl File {
 
 /// A files map is a struct that represents an map of files to be merged, and some other options
 pub struct FilesMap {
-    pub files: IndexMap<String, File>,
+    pub files: Vec<File>,
     pub sort_by_date: bool,
     pub sort_by_file: bool,
     pub cutting_rows: usize,
 }
 
 impl FilesMap {
-    pub fn new(
-        files: IndexMap<String, File>,
-        sort_by_date: bool,
-        sort_by_file: bool,
-        cutting_rows: usize,
-    ) -> Result<Self> {
-        Ok(Self {
-            files,
-            sort_by_date,
-            sort_by_file,
-            cutting_rows,
-        })
-    }
-
-    // TODO: impl From<Multipart> for FilesMap, i.e make this a more sorta library-generic function
-    /// Creates a new files map struct from a multipart form argument
-    pub async fn from_multipart(mut multipart: Multipart) -> Result<FilesMap> {
-        let mut files_to_merge = IndexMap::new();
-        let mut cutting_rows: usize = 0;
-        let mut sort_by_date: bool = false;
-        let mut sort_by_file: bool = false;
-
-        while let Some(field) = multipart.next_field().await.unwrap() {
-            let content_type = field.content_type().map(str::to_owned);
-
-            let name = field.name().unwrap_or("unknown").to_owned();
-            let other_name = field.file_name().unwrap_or("unknown").to_owned();
-            let bytes = field.bytes().await.unwrap();
-
-            if name.starts_with("sort_by") {
-                if name == "sort_by_date" {
-                    let val = String::from_utf8(bytes.to_vec())
-                        .unwrap()
-                        .parse::<bool>()
-                        .unwrap();
-
-                    if val {
-                        sort_by_date = true;
-                    }
-                } else if name == "sort_by_file" {
-                    let val = String::from_utf8(bytes.to_vec())
-                        .unwrap()
-                        .parse::<bool>()
-                        .unwrap();
-
-                    if val {
-                        sort_by_file = true;
-                    }
-                }
-                continue;
-            }
-
-            if name.ends_with("(LM)") {
-                let date = String::from_utf8(bytes.to_vec()).unwrap();
-                // println!("Last modified (str): {}", &date);
-
-                let mut file_name = name.split("(LM)").next().unwrap().to_string();
-                let mut is_main = false;
-
-                if name.contains("MAIN") {
-                    println!("That's the main file.");
-                    file_name = file_name.replace("-MAIN", "");
-                    is_main = true;
-                }
-
-                // println!("File name (lm): {:?}", &file_name);
-
-                if files_to_merge.contains_key(&file_name) {
-                    let val: &mut File = files_to_merge.get_mut(&file_name).unwrap();
-                    val.last_modified = date;
-                } else {
-                    files_to_merge.insert(
-                        file_name.to_owned(),
-                        File::new(other_name.clone(), date, vec![], is_main),
-                    );
-                }
-
-                continue;
-            }
-
-            if name == "cuttingRows" {
-                let cutting_rows_str = String::from_utf8(bytes.to_vec()).unwrap();
-                println!("Cutting rows (str): {}", &cutting_rows_str);
-
-                if !cutting_rows_str.is_empty() {
-                    cutting_rows = cutting_rows_str.parse::<usize>().unwrap();
-                    println!("Cutting rows (usize): {}", &cutting_rows);
-                }
-
-                continue;
-            }
-
-            if content_type
-                == Some(
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
-                )
-                || content_type == Some("application/vnd.ms-excel".to_string())
-            {
-                let bytes = bytes.to_vec();
-                let mut is_main = false;
-
-                let reader = Cursor::new(bytes);
-                let mut workbook = calamine::open_workbook_auto_from_rs(reader).unwrap();
-
-                println!("File name (excel): {:?}", &name);
-
-                if name.contains("MAIN") {
-                    println!("That's the main file. (excel)");
-                    is_main = true;
-                }
-
-                if workbook.worksheets().len() > 1 {
-                    return Err(Error::SheetLimitExceeded);
-                }
-
-                if let Some(range) = workbook.worksheet_range_at(0) {
-                    let sheet = range.unwrap();
-                    let rows = sheet.rows().map(|x| Cow::Owned(x.to_vec())).collect();
-
-                    // print cutting rows
-                    println!("Cutting Rows: {:?}", cutting_rows);
-
-                    if files_to_merge.contains_key(&other_name) {
-                        let val = files_to_merge.get_mut(&other_name).unwrap();
-                        let rows = rows;
-                        val.rows = rows;
-                        val.is_main = is_main;
-                    } else {
-                        files_to_merge.insert(
-                            name.replace("-MAIN", "").to_owned(),
-                            File::new(other_name.clone(), "unknown".to_string(), rows, is_main),
-                        );
-                    }
-                }
-
-                continue;
-            }
-        }
-
-        Ok(Self {
-            files: files_to_merge,
-            sort_by_date,
-            sort_by_file,
-            cutting_rows,
-        })
-    }
-
     /// sort based on date or file name
-    fn sort(&mut self, sort: SortBy) {
+    fn sort(files: &mut [File], sort: SortBy) {
         match sort {
             SortBy::Date => {
                 print!("Sorting by date...");
-                self.files.sort_by(|_, v1, _, v2| {
+                files.sort_by(|v1, v2| {
                     let dt1 =
                         NaiveDateTime::parse_from_str(&v1.last_modified, "%Y %m %d %H%M").unwrap();
                     let dt2 =
@@ -221,7 +77,7 @@ impl FilesMap {
 
             SortBy::File => {
                 println!("Sorting by file...");
-                self.files.sort_by(|_, b, _, d| {
+                files.sort_by(|b, d| {
                     let a_name = b
                         .name
                         .clone()
@@ -258,45 +114,134 @@ impl FilesMap {
     }
 
     /// merge files
-    fn merge(&mut self) -> Result<MergeFiles> {
-        let mut files_to_merge = self.files.clone();
-        let sort_by_date = self.sort_by_date;
-        let sort_by_file = self.sort_by_file;
-        let cutting_rows = self.cutting_rows;
+    pub async fn merge_from_multipart(mut multipart: Multipart) -> Result<MergeFiles> {
+        let mut files: Vec<File> = vec![];
+        let mut dates: Vec<String> = vec![];
 
-        files_to_merge
-            .iter()
-            .for_each(|(_, v)| println!("{:?}", &v.name));
+        let mut cutting_rows: usize = 0;
+        let mut sort_by_date: bool = false;
+        let mut sort_by_file: bool = false;
+
+        while let Some(field) = multipart.next_field().await.unwrap() {
+            let content_type = field.content_type().map(str::to_owned);
+
+            let name = field.name().unwrap_or("unknown").to_owned();
+            let other_name = field.file_name().unwrap_or("unknown").to_owned();
+            let bytes = field.bytes().await.unwrap();
+
+            if name.starts_with("sort-by") {
+                if name == "sort-by-date" {
+                    let val = String::from_utf8(bytes.to_vec())
+                        .unwrap()
+                        .parse::<bool>()
+                        .unwrap();
+
+                    if val {
+                        sort_by_date = true;
+                    }
+                } else if name == "sort-by-file" {
+                    let val = String::from_utf8(bytes.to_vec())
+                        .unwrap()
+                        .parse::<bool>()
+                        .unwrap();
+
+                    if val {
+                        sort_by_file = true;
+                    }
+                }
+                continue;
+            }
+
+            if name == "last-mod[]" {
+                let date = String::from_utf8(bytes.to_vec()).unwrap();
+
+                dates.push(date);
+
+                continue;
+            }
+
+            if name == "cuttingRows" {
+                let cutting_rows_str = String::from_utf8(bytes.to_vec()).unwrap();
+                println!("Cutting rows (str): {}", &cutting_rows_str);
+
+                if !cutting_rows_str.is_empty() {
+                    cutting_rows = cutting_rows_str.parse::<usize>().unwrap();
+                    println!("Cutting rows (usize): {}", &cutting_rows);
+                }
+
+                continue;
+            }
+
+            if content_type
+                == Some(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
+                )
+                || content_type == Some("application/vnd.ms-excel".to_string())
+            {
+                let bytes = bytes.to_vec();
+                let mut is_main = false;
+                let reader = Cursor::new(bytes);
+                let mut workbook = calamine::open_workbook_auto_from_rs(reader).unwrap();
+
+                println!("File name (excel): {:?}", &name);
+
+                if workbook.worksheets().len() > 1 {
+                    return Err(Error::SheetLimitExceeded);
+                }
+
+                if name == "main-file" {
+                    println!("That's the main file. (excel)");
+                    is_main = true;
+                }
+
+                if let Some(range) = workbook.worksheet_range_at(0) {
+                    let sheet = range.unwrap();
+                    let rows = sheet.rows().map(|x| Cow::Owned(x.to_vec())).collect();
+
+                    files.push(File::new(
+                        other_name.clone(),
+                        "unknown".to_string(),
+                        rows,
+                        is_main,
+                    ));
+                }
+
+                continue;
+            }
+        }
+
+        files.sort_by_key(|file| !file.is_main);
+
+        files.iter_mut().enumerate().for_each(|(i, file)| {
+            file.last_modified = dates[i].clone();
+        });
+
+        dates.clear();
+
+        println!("Files: {:?}", &files);
 
         if sort_by_date {
-            self.sort(SortBy::Date);
+            FilesMap::sort(&mut files, SortBy::Date);
         } else if sort_by_file {
-            self.sort(SortBy::File);
+            FilesMap::sort(&mut files, SortBy::File);
         }
 
         // sorting that will run anyways
-        files_to_merge.sort_by_cached_key(|_, v| !v.is_main);
-        files_to_merge
-            .iter()
-            .for_each(|(_, v)| println!("{:?}", &v.name));
+        files.sort_by_key(|file| !file.is_main);
 
-        files_to_merge
-            .iter()
-            .filter(|file| file.1.is_main)
-            .for_each(|file| {
-                println!("Main file: {:?}", file.0);
-            });
-
-        let mut stats = std::fs::File::create("rows.txt").unwrap();
-        files_to_merge.iter().for_each(|(_, v)| {
-            writeln!(&mut stats, "Name: {:?}, rows: {:?}", v.name, v.rows.len()).unwrap();
+        files.iter().for_each(|v| {
+            println!(
+                "Name: {:?}, rows: {:?}, is_main: {:?}, date_modified: {:?}",
+                v.name,
+                v.rows.len(),
+                v.is_main,
+                v.last_modified
+            );
         });
 
-        let mut first_rows: Vec<DataType> = files_to_merge
-            .iter()
-            .next()
+        let mut first_rows: Vec<DataType> = files
+            .first()
             .unwrap()
-            .1
             .rows
             .first()
             .unwrap()
@@ -305,11 +250,6 @@ impl FilesMap {
             .collect();
 
         println!("Merging files...");
-
-        println!(
-            "Date: {:?}",
-            files_to_merge.iter().next().unwrap().1.last_modified
-        );
 
         // Create a directory if it doesn't exist
         let directory = Path::new("text");
@@ -323,19 +263,16 @@ impl FilesMap {
 
         // cut n rows from each non-main file
         if cutting_rows > 0 {
-            files_to_merge
-                .iter_mut()
-                .filter(|x| !x.1.is_main)
-                .for_each(|(_, v)| {
-                    v.rows = v.rows.drain((cutting_rows - 1)..).collect();
-                });
+            files.iter_mut().filter(|x| !x.is_main).for_each(|v| {
+                v.rows = v.rows.drain((cutting_rows - 1)..).collect();
+            });
         }
 
         let mut acc_width = 0;
-        let mut values_rows: Vec<Vec<DataType>> = files_to_merge
+        let mut values_rows: Vec<Vec<DataType>> = files
             .iter()
             .enumerate()
-            .flat_map(|(i, (_, inner_vec))| {
+            .flat_map(|(i, inner_vec)| {
                 let main_data: Vec<Vec<DataType>> = inner_vec
                     .rows
                     .iter()
@@ -359,18 +296,6 @@ impl FilesMap {
                         [intro_headers, cur_row_values].concat()
                     })
                     .collect();
-
-                // let directory = Path::new("text");
-
-                // let file_path = directory.join(format!("{}.txt", &inner_vec.name));
-
-                // // Open the file in write mode
-                // let mut file = std::fs::File::create(&file_path).unwrap();
-
-                // for row in &main_data {
-                //     let line = row.join(",");
-                //     writeln!(&mut file, "{}", line).unwrap();
-                // }
 
                 main_data
             })
@@ -396,16 +321,167 @@ impl FilesMap {
     }
 
     /// search and filter out the matched rows
-    pub fn search(data: Vec<&[DataType]>, search: &[Search]) -> Result<SearchFiles> {
+    pub async fn search_from_multipart(mut multipart: Multipart) -> Result<SearchFiles> {
+        let mut files: Vec<File> = vec![];
+        let mut dates: Vec<String> = vec![];
+        let mut conditions: Conditions = Conditions { conditions: vec![] };
+
+        while let Some(field) = multipart.next_field().await.unwrap() {
+            let content_type = field.content_type().map(str::to_owned);
+
+            let name = field.name().unwrap_or("unknown").to_owned();
+            let other_name = field.file_name().unwrap_or("unknown").to_owned();
+            let bytes = field.bytes().await.unwrap();
+
+            if name == "last-mod[]" {
+                let date = String::from_utf8(bytes.to_vec()).unwrap();
+
+                dates.push(date);
+
+                continue;
+            }
+
+            if content_type
+                == Some(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
+                )
+                || content_type == Some("application/vnd.ms-excel".to_string())
+            {
+                let bytes = bytes.to_vec();
+                let mut is_main = false;
+                let reader = Cursor::new(bytes);
+                let mut workbook = calamine::open_workbook_auto_from_rs(reader).unwrap();
+
+                println!("File name (excel): {:?}", &name);
+
+                if workbook.worksheets().len() > 1 {
+                    return Err(Error::SheetLimitExceeded);
+                }
+
+                if name == "main-file" {
+                    is_main = true;
+                }
+
+                if let Some(range) = workbook.worksheet_range_at(0) {
+                    let sheet = range.unwrap();
+                    let rows = sheet.rows().map(|x| Cow::Owned(x.to_vec())).collect();
+
+                    files.push(File::new(
+                        other_name.clone(),
+                        "unknown".to_string(),
+                        rows,
+                        is_main,
+                    ));
+                }
+
+                continue;
+            }
+
+            if name == "conditions" {
+                conditions = serde_json::from_slice(bytes.as_ref()).unwrap();
+
+                println!("Conditions: {:?}", &conditions);
+
+                continue;
+            }
+        }
+
+        files.sort_by_key(|file| !file.is_main);
+
+        files.iter_mut().enumerate().for_each(|(i, file)| {
+            file.last_modified = dates[i].clone();
+        });
+
+        dates.clear();
+
+        // sorting that will run anyways
+        files.sort_by_key(|file| !file.is_main);
+
+        files.iter().for_each(|v| {
+            println!(
+                "Name: {:?}, rows: {:?}, is_main: {:?}, date_modified: {:?}",
+                v.name,
+                v.rows.len(),
+                v.is_main,
+                v.last_modified
+            );
+        });
+
+        let mut first_rows: Vec<DataType> = files
+            .first()
+            .unwrap()
+            .rows
+            .first()
+            .unwrap()
+            .iter()
+            .map(|data| data.to_owned())
+            .collect();
+
+        println!("Merging files...");
+
+        let mut acc_width = 0;
+        let mut values_rows: Vec<Vec<DataType>> = files
+            .iter()
+            .enumerate()
+            .flat_map(|(i, inner_vec)| {
+                let main_data: Vec<Vec<DataType>> = inner_vec
+                    .rows
+                    .iter()
+                    .skip(1)
+                    .enumerate()
+                    .map(|(j, file)| {
+                        let mut intro_headers: Vec<DataType> = vec![];
+                        let cur_row_values: Vec<DataType> =
+                            file.iter().map(|row_data| row_data.to_owned()).collect();
+
+                        intro_headers.push(DataType::String(inner_vec.last_modified.to_owned()));
+                        intro_headers.push(DataType::Int((i + 1) as i64));
+                        intro_headers.push(DataType::Int((acc_width + 1) as i64));
+                        intro_headers.push(DataType::String(
+                            (i + 1).to_string() + "-" + ((j) + 1).to_string().as_str(),
+                        ));
+                        intro_headers.push(DataType::String(inner_vec.name.replace("-MAIN", "")));
+
+                        acc_width += 1;
+
+                        [intro_headers, cur_row_values].concat()
+                    })
+                    .collect();
+
+                main_data
+            })
+            .collect();
+
+        // modify the headers
+        let mut extra_headers = [
+            "Date Modified",
+            "Number of Files",
+            "Series Number",
+            "Count Number",
+            "File Name",
+        ]
+        .iter()
+        .map(|x| DataType::String(x.to_string()))
+        .collect::<Vec<DataType>>();
+
+        extra_headers.append(&mut first_rows);
+
+        values_rows.insert(0, extra_headers);
+
+        // len of values_rows
+        let len = values_rows.len();
+        println!("len: {:?}", &len);
+
         // FIXME: I don't remember
-        let headers = &data.clone()[0];
+        let headers = &values_rows.clone()[0];
         let mut filtered_rows: Vec<Vec<DataType>> = vec![];
 
-        for row in &data {
+        for row in &values_rows {
             let mut is_matched = false;
-            for search in search {
+            for search in &conditions.conditions {
                 // TODO: see if this makes a problem with non-string types
                 if row.contains(&DataType::String(search.data.to_owned())) {
+                    println!("we found a match: {:?}", &search.data);
                     let index = row
                         .iter()
                         .position(|x| x == &DataType::String(search.data.to_owned()))
@@ -416,16 +492,19 @@ impl FilesMap {
 
                     // title
                     if let Some(title) = &search.title {
-                        is_matched = headers[index] == DataType::String(title.to_owned());
-                        // if the title doesn't match, then skip this iteration, it's not what we want
-                        if !is_matched {
-                            continue;
+                        if !title.is_empty() {
+                            is_matched = headers[index] == DataType::String(title.to_owned());
+                            // if the title doesn't match, then skip this iteration, it's not what we want
+                            if !is_matched {
+                                continue;
+                            }
                         }
                     }
 
                     // intersections
                     if is_matched && !search.intersections.is_empty() {
                         println!("we are in intersections");
+                        println!("intersections: {:?}", &search.intersections);
 
                         search.intersections.iter().for_each(|search| {
                             if row.contains(&DataType::String(search.clone().data)) {
@@ -449,12 +528,13 @@ impl FilesMap {
                                     }
                                 }
                             } else {
+                                println!("the row didn't match data: {:?}", &search.data);
                                 is_matched = false;
                             }
                         })
                     }
 
-                    // we push the row if it's matched and cut it
+                    // we push the row if it's matched
                     if is_matched {
                         filtered_rows.push(row.to_vec());
                     }
@@ -464,10 +544,9 @@ impl FilesMap {
 
         filtered_rows.insert(0, headers.to_vec());
 
-        dbg!(&filtered_rows);
-
         Ok(SearchFiles {
             rows: filtered_rows,
+            conditions: conditions.conditions,
         })
     }
 }

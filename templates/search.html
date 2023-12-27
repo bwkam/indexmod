@@ -5,12 +5,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Excel Merge</title>
-    <link rel="stylesheet" href="/_assets/css/merge.css" />
+    <link rel="stylesheet" href="/_assets/css/search.css" />
     <!-- metadata -->
 
     <!-- our general utils -->
     <script src="/_assets/js/utils.js"></script>
-    <script src="/_assets/js/merge.js"></script>
+    <script src="/_assets/js/search.js"></script>
     <!-- our general utils -->
 
     <!-- dependencies -->
@@ -20,7 +20,7 @@
     <!-- dependencies -->
   </head>
   <body>
-    <form id="main-form">
+    <form>
       <!-- Main file -->
       <label for="main-file">Main files</label>
       <input type="file" id="main-file" name="main-file" accept=".xlsx, .xls" />
@@ -38,12 +38,11 @@
       <h1 id="loading" style="display: none">Loading...</h1>
 
       <!-- Excel files -->
-
       <label for="excel-file"></label>
       <input
         type="file"
         id="excel-file"
-        name="excel-file[]"
+        name="excel-file"
         accept=".xlsx, .xls"
         multiple
       />
@@ -57,11 +56,6 @@
       </button>
       <!-- Excel files -->
 
-      <!-- Cutting rows -->
-      <label for="cutting-rows">Cutting Rows:</label>
-      <input type="number" id="cutting-rows" name="cutting-rows" />
-      <!-- Cutting rows -->
-
       <!-- Zip input -->
       <label for="zip-input"></label>
       <input type="file" id="zip-input" name="zip-input" accept=".zip" />
@@ -70,23 +64,22 @@
       </button>
       <!-- Zip input -->
 
+      <!-- Template download button -->
+      <button type="button" id="download-template">Download template</button>
+
       <!-- UL for the excel files -->
       <ul id="excel-list"></ul>
       <!-- UL for the excel files -->
 
-      <!-- Submit button -->
-      <button type="submit" id="submit-excel">Run</button>
-      <!-- Submit button -->
+      <!-- Search -->
+      <button type="button" id="add-search">+</button>
 
-      <!-- Sort by date -->
-      <input name="sort-by-date" type="checkbox" id="sortByDateCheckbox" />
-      <label for="sortByDateCheckbox">Sort by date</label>
-      <!-- Sort by date -->
+      <div id="search" style="display: flex; flex-direction: column"></div>
+      <!-- Search -->
 
-      <!-- Sort by file -->
-      <input name="sort-by-file" type="checkbox" id="sortByFileCheckbox" />
-      <label for="sortByFileCheckbox">Sort by file</label>
-      <!-- Sort by file -->
+      <!-- Submit button -->
+      <button type="submit" id="submit-excel">Search</button>
+      <!-- Submit button -->
     </form>
   </body>
 </html>

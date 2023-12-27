@@ -1,10 +1,11 @@
 use anyhow::Context;
 use calamine::DataType;
-use rust_xlsxwriter::{ExcelDateTime, Workbook};
+use rust_xlsxwriter::{Color, Format, Workbook};
+use serde::Deserialize;
 
 use crate::error::Result;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Search {
     pub data: String,
     pub title: Option<String>,
@@ -14,6 +15,7 @@ pub struct Search {
 // TODO: Fix the visibility of structs like this
 pub struct SearchFiles {
     pub rows: Vec<Vec<DataType>>,
+    pub conditions: Vec<Search>,
 }
 
 impl SearchFiles {
@@ -28,12 +30,7 @@ impl SearchFiles {
                     DataType::String(s) => worksheet.write_string(i as u32, j as u16, s),
                     DataType::Int(n) => worksheet.write_number(i as u32, j as u16, *n as u32),
                     DataType::Float(f) => worksheet.write_number(i as u32, j as u16, *f),
-                    // DataType::DateTimeIso(dt) => worksheet.write_datetime(
-                    //     i as u32,
-                    //     j as u16,
-                    //     ExcelDateTime::parse_from_str(dt)
-                    //         .context("Failed to parse date")
-                    //         .unwrap(),
+
                     _ => worksheet.write_string(i as u32, j as u16, ""),
                 };
             }
