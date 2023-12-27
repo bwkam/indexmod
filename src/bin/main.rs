@@ -15,7 +15,6 @@ use excel_merge::error::Result;
 use excel_merge::routes;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
-use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 #[derive(askama::Template)]
@@ -25,12 +24,6 @@ struct MergeTemplate {}
 #[derive(askama::Template)]
 #[template(path = "search.html")]
 struct SearchTemplate {}
-
-#[derive(askama::Template)]
-#[template(path = "new_file.html")]
-struct NewFileTemplate {
-    name: String,
-}
 
 #[tokio::main]
 async fn main() {
@@ -49,7 +42,6 @@ async fn main() {
             "/api/search/download_template",
             post(routes::search::template_download::download),
         )
-        .route("/api/new_file", post(new_file))
         .route("/merge", get(merge))
         .route("/search", get(search))
         .route("/_assets/*path", get(assets))
@@ -64,25 +56,12 @@ async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
-    info!("->> LISTENING on {addr}\n");
+    println!("->> LISTENING on localhost:8080");
 
     axum::Server::bind(&addr)
         .serve(router.into_make_service())
         .await
         .unwrap();
-}
-
-async fn new_file(mut multipart: Multipart) -> Result<impl IntoResponse> {
-    while let Some(field) = multipart.next_field().await.unwrap() {
-        let name = field.name().unwrap().to_owned();
-        let content = field.bytes().await.unwrap();
-        println!("{}: {:?}", name, content);
-    }
-
-    let template = NewFileTemplate {
-        name: "test".to_string(),
-    };
-    Ok(template)
 }
 
 async fn merge() -> Result<impl IntoResponse> {

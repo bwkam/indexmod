@@ -326,8 +326,6 @@ document.addEventListener("DOMContentLoaded", () => {
     mainFileDate
       .concat(
         formData.getAll("excel-file[]").map((file) => {
-          console.log("nigga we here");
-
           let lastMod = file.lastModified;
           const date = getDate(lastMod, false);
 
