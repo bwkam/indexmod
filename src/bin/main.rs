@@ -1,4 +1,4 @@
-use axum::extract::{Multipart, Path};
+use axum::extract::Path;
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::{
@@ -11,6 +11,7 @@ use axum::{
     routing::post,
     Router,
 };
+use axum_macros::debug_handler;
 use excel_merge::error::Result;
 use excel_merge::routes;
 use std::net::SocketAddr;
@@ -24,7 +25,6 @@ struct MergeTemplate {}
 #[derive(askama::Template)]
 #[template(path = "search.html")]
 struct SearchTemplate {}
-
 #[tokio::main]
 async fn main() {
     let trace_sub = tracing_subscriber::FmtSubscriber::builder()
