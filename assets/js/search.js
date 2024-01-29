@@ -1,9 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
   /////////// Elements ///////////
-  const mainFileList = document.getElementById("main-file-list");
-  const mainFileInput = document.getElementById("main-file");
   const zipFileInput = document.getElementById("zip-input");
-  const addMainFileButton = document.getElementById("add-main-file");
 
   const excelList = document.getElementById("excel-list");
   const excelFileInput = document.getElementById("excel-file");
@@ -280,58 +277,22 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  mainFileInput.addEventListener("change", async (e) => {
-    const files = mainFileInput.files;
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-
-      formData.append("main-file", file);
-
-      console.log(formData);
-
-      const li = document.createElement("li");
-
-      mainFileName = file.name;
-      li.textContent = file.name;
-      mainFileList.appendChild(li);
-
-      const button = document.createElement("button");
-      button.textContent = "X";
-      button.addEventListener("click", () => {
-        li.remove();
-        formData.delete("main-file");
-        console.log(formData);
-      });
-
-      li.appendChild(button);
-    }
-  });
 
   submitExcelButton.addEventListener("click", async (e) => {
     e.preventDefault();
     loading = true;
     // setLoading(true);
 
-    let mainFile = formData.get("main-file");
-    let mainFileDate = [];
-
-    if (mainFile) {
-      mainFileDate.push(getDate(mainFile.lastModified, false));
-    }
-
-    console.log("mainFileDate: " + mainFileDate);
 
     formData.delete("last-mod[]");
 
-    mainFileDate
-      .concat(
         formData.getAll("excel-file[]").map((file) => {
           let lastMod = file.lastModified;
           const date = getDate(lastMod, false);
 
           return date;
         })
-      )
+
       .forEach((date) => {
         formData.append("last-mod[]", date);
       });
@@ -368,7 +329,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${mainFileName.replace(".xlsx", "")}-merge${formatDate(
+    a.download = `merge${formatDate(
       date,
       "mmddyy"
     )}${time.trim()}.xlsx`;

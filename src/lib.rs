@@ -334,6 +334,7 @@ impl FilesMap {
             let other_name = field.file_name().unwrap_or("unknown").to_owned();
             let bytes = field.bytes().await.unwrap();
 
+            // fetch important information from the multipart form
             if name == "last-mod[]" {
                 let date = String::from_utf8(bytes.to_vec()).unwrap();
 
@@ -349,7 +350,6 @@ impl FilesMap {
                 || content_type == Some("application/vnd.ms-excel".to_string())
             {
                 let bytes = bytes.to_vec();
-                let mut is_main = false;
                 let reader = Cursor::new(bytes);
                 let mut workbook = calamine::open_workbook_auto_from_rs(reader).unwrap();
 
@@ -357,10 +357,6 @@ impl FilesMap {
 
                 if workbook.worksheets().len() > 1 {
                     return Err(Error::SheetLimitExceeded);
-                }
-
-                if name == "main-file" {
-                    is_main = true;
                 }
 
                 if let Some(range) = workbook.worksheet_range_at(0) {
@@ -371,7 +367,7 @@ impl FilesMap {
                         other_name.clone(),
                         "unknown".to_string(),
                         rows,
-                        is_main,
+                        false,
                     ));
                 }
 
@@ -387,7 +383,6 @@ impl FilesMap {
             }
         }
 
-        files.sort_by_key(|file| !file.is_main);
 
         files.iter_mut().enumerate().for_each(|(i, file)| {
             file.last_modified = dates[i].clone();
@@ -395,8 +390,6 @@ impl FilesMap {
 
         dates.clear();
 
-        // sorting that will run anyways
-        files.sort_by_key(|file| !file.is_main);
 
         files.iter().for_each(|v| {
             println!(
@@ -441,7 +434,7 @@ impl FilesMap {
                         intro_headers.push(DataType::String(
                             (i + 1).to_string() + "-" + ((j) + 1).to_string().as_str(),
                         ));
-                        intro_headers.push(DataType::String(inner_vec.name.replace("-MAIN", "")));
+                        intro_headers.push(DataType::String(inner_vec.name.clone()));
 
                         acc_width += 1;
 
