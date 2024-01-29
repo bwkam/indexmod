@@ -26,6 +26,7 @@ pub struct Conditions {
     pub conditions: Vec<Search>,
 }
 
+// TODO: Refactor the vector `clone`s to `cloned`s
 #[derive(Clone, Debug)]
 /// A file is a struct that represents a single file to be merged
 pub struct File {
