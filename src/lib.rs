@@ -340,7 +340,6 @@ impl FilesMap {
                 let date = String::from_utf8(bytes.to_vec()).unwrap();
 
                 dates.push(date);
-
                 continue;
             }
 
@@ -406,69 +405,45 @@ impl FilesMap {
             );
         });
 
-
-        let final_headers = files
-            .iter()
-            .flat_map(|x| {
-                x.rows
-                    .first()
-                    .unwrap()
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect_vec()
-            })
-            .collect_vec();
-
-        let final_headers = final_headers.into_iter().unique().collect_vec();
-
-        let mut final_headers = final_headers
-            .iter()
-            .map(|x| DataType::String(x.to_string()))
-            .collect_vec();
-
-        final_headers
-            .iter()
-            .for_each(|x| println!("final_headers: {:?}", &x));
-
         println!("Merging files...");
 
         let mut acc_width = 0;
 
         // merging the files's rows into one big vec
-        let mut values_rows: Vec<Vec<DataType>> = files
-            .iter()
-            .enumerate()
-            .flat_map(|(i, file)| {
-                let main_data: Vec<Vec<DataType>> = file
-                    .rows
-                    .iter()
-                    .skip(1)
-                    .enumerate()
-                    .map(|(j, rows)| {
-                        let mut intro_headers: Vec<DataType> = vec![];
-                        let cur_row_values: Vec<DataType> =
-                            rows.iter().map(|row_data| row_data.to_owned()).collect();
-
-                        intro_headers.push(DataType::String(file.last_modified.to_owned()));
-                        intro_headers.push(DataType::Int((i + 1) as i64));
-                        intro_headers.push(DataType::Int((acc_width + 1) as i64));
-                        intro_headers.push(DataType::String(
-                            (i + 1).to_string() + "-" + ((j) + 1).to_string().as_str(),
-                        ));
-                        intro_headers.push(DataType::String(file.name.replace("-MAIN", "")));
-
-                        acc_width += 1;
-
-                        [intro_headers, cur_row_values].concat()
-                    })
-                    .collect();
-
-                main_data
-            })
-            .collect();
+        // let mut values_rows: Vec<Vec<DataType>> = files
+        //     .iter()
+        //     .enumerate()
+        //     .flat_map(|(i, file)| {
+        //         let main_data: Vec<Vec<DataType>> = file
+        //             .rows
+        //             .iter()
+        //             .skip(1)
+        //             .enumerate()
+        //             .map(|(j, rows)| {
+        //                 let mut intro_headers: Vec<DataType> = vec![];
+        //                 let cur_row_values: Vec<DataType> =
+        //                     rows.iter().map(|row_data| row_data.to_owned()).collect();
+        //
+        //                 intro_headers.push(DataType::String(file.last_modified.to_owned()));
+        //                 intro_headers.push(DataType::Int((i + 1) as i64));
+        //                 intro_headers.push(DataType::Int((acc_width + 1) as i64));
+        //                 intro_headers.push(DataType::String(
+        //                     (i + 1).to_string() + "-" + ((j) + 1).to_string().as_str(),
+        //                 ));
+        //                 intro_headers.push(DataType::String(file.name.replace("-MAIN", "")));
+        //
+        //                 acc_width += 1;
+        //
+        //                 [intro_headers, cur_row_values].concat()
+        //             })
+        //             .collect();
+        //
+        //         main_data
+        //     })
+        //     .collect();
 
         // modify the headers
-        let mut extra_headers = [
+        let mut intro_headers = [
             "Date Modified",
             "Number of Files",
             "Series Number",
@@ -479,83 +454,102 @@ impl FilesMap {
         .map(|x| DataType::String(x.to_string()))
         .collect::<Vec<DataType>>();
 
-        extra_headers.append(&mut final_headers);
-
-        values_rows.insert(0, extra_headers);
-
-        let len = values_rows.len();
-        println!("len: {:?}", &len);
-
-        let headers = &values_rows.clone()[0];
         let mut filtered_rows: Vec<Vec<DataType>> = vec![];
+        let mut filtered_files: Vec<File> = vec![];
+        let mut headers: Vec<DataType> = vec![];
 
-        for row in &values_rows {
+        for file in &files {
             let mut is_matched = false;
+            let mut new_file_rows: Vec<Vec<DataType>> = vec![];
+
             for search in &conditions.conditions {
-                // TODO: see if this makes a problem with non-string types
-                if row.contains(&DataType::String(search.data.to_owned())) {
-                    println!("we found a match: {:?}", &search.data);
-                    let index = row
-                        .iter()
-                        .position(|x| x == &DataType::String(search.data.to_owned()))
-                        .unwrap();
+                let current_file_rows = file
+                    .rows
+                    .iter()
+                    .map(|x| x.clone().into_owned())
+                    .collect_vec();
+                headers = current_file_rows.to_owned().first().unwrap().clone();
 
-                    // data is matched, check other things now
-                    is_matched = true;
+                for row in &current_file_rows {
+                    if row.contains(&DataType::String(search.data.to_owned())) {
+                        println!("we found a match: {:?}", &search.data);
+                        let index = row
+                            .iter()
+                            .position(|x| x == &DataType::String(search.data.to_owned()))
+                            .unwrap();
 
-                    // title
-                    if let Some(title) = &search.title {
-                        if !title.is_empty() {
-                            is_matched = headers[index] == DataType::String(title.to_owned());
-                            // if the title doesn't match, then skip this iteration, it's not what we want
-                            if !is_matched {
-                                continue;
+                        // data is matched, check other things now
+                        is_matched = true;
+
+                        // title
+                        if let Some(title) = &search.title {
+                            if !title.is_empty() {
+                                is_matched = headers[index] == DataType::String(title.to_owned());
+                                // if the title doesn't match, then skip this iteration, it's not what we want
+                                if !is_matched {
+                                    continue;
+                                }
                             }
                         }
-                    }
 
-                    // intersections
-                    if is_matched && !search.intersections.is_empty() {
-                        println!("we are in intersections");
-                        println!("intersections: {:?}", &search.intersections);
+                        // intersections
+                        if is_matched && !search.intersections.is_empty() {
+                            println!("we are in intersections");
+                            println!("intersections: {:?}", &search.intersections);
 
-                        search.intersections.iter().for_each(|search| {
-                            if row.contains(&DataType::String(search.clone().data)) {
-                                println!("the row matched data: {:?}", &search.data);
+                            search.intersections.iter().for_each(|search| {
+                                if row.contains(&DataType::String(search.clone().data)) {
+                                    println!("the row matched data: {:?}", &search.data);
 
-                                let index = row
-                                    .iter()
-                                    .position(|x| x == &DataType::String(search.data.to_string()))
-                                    .unwrap();
+                                    let index = row
+                                        .iter()
+                                        .position(|x| {
+                                            x == &DataType::String(search.data.to_string())
+                                        })
+                                        .unwrap();
 
-                                println!("index matched: {:?}", &index);
+                                    println!("index matched: {:?}", &index);
 
-                                if let Some(title) = &search.title {
-                                    println!("we be looking for title: {:?}", &title);
-                                    is_matched = headers[index] == DataType::String(title.clone());
+                                    if let Some(title) = &search.title {
+                                        println!("we be looking for title: {:?}", &title);
+                                        is_matched =
+                                            headers[index] == DataType::String(title.clone());
 
-                                    if is_matched {
-                                        println!("we found the title: {:?}", &title);
-                                    } else {
-                                        println!("we didn't find the title: {:?}", &title)
+                                        if is_matched {
+                                            println!("we found the title: {:?}", &title);
+                                        } else {
+                                            println!("we didn't find the title: {:?}", &title)
+                                        }
                                     }
+                                } else {
+                                    println!("the row didn't match data: {:?}", &search.data);
+                                    is_matched = false;
                                 }
-                            } else {
-                                println!("the row didn't match data: {:?}", &search.data);
-                                is_matched = false;
-                            }
-                        })
-                    }
+                            })
+                        }
 
-                    // we push the row if it's matched
-                    if is_matched {
-                        filtered_rows.push(row.to_vec());
+                        // we push the row if it's matched
+                        if is_matched {
+                            new_file_rows.push(row.to_vec());
+                            filtered_rows.push(row.to_vec());
+                        }
                     }
                 }
             }
+
+            let new_file_rows = new_file_rows.iter().map(|x| Cow::Owned(x.clone())).collect_vec();
+            // println!("adding {:?}", new_file_rows);
+
+            filtered_files.push(File {
+                rows: new_file_rows,
+                is_main: false,
+                name: file.name.clone(),
+                last_modified: file.last_modified.clone(),
+            });
         }
 
-        filtered_rows.insert(0, headers.to_vec());
+
+        // filtered_rows.insert(0, headers.to_vec());
 
         Ok(SearchFiles {
             rows: filtered_rows,
