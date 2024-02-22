@@ -6,6 +6,7 @@ use crate::merge::MergeFiles;
 use axum::extract::Multipart;
 use calamine::{DataType, Reader};
 use chrono::NaiveDateTime;
+use itertools::Itertools;
 use search::{Search, SearchFiles};
 use serde::Deserialize;
 
@@ -327,6 +328,7 @@ impl FilesMap {
         let mut dates: Vec<String> = vec![];
         let mut conditions: Conditions = Conditions { conditions: vec![] };
 
+        // fetch the results from the multipart form
         while let Some(field) = multipart.next_field().await.unwrap() {
             let content_type = field.content_type().map(str::to_owned);
 
@@ -334,7 +336,6 @@ impl FilesMap {
             let other_name = field.file_name().unwrap_or("unknown").to_owned();
             let bytes = field.bytes().await.unwrap();
 
-            // fetch important information from the multipart form
             if name == "last-mod[]" {
                 let date = String::from_utf8(bytes.to_vec()).unwrap();
 
@@ -350,6 +351,7 @@ impl FilesMap {
                 || content_type == Some("application/vnd.ms-excel".to_string())
             {
                 let bytes = bytes.to_vec();
+                let mut is_main = false;
                 let reader = Cursor::new(bytes);
                 let mut workbook = calamine::open_workbook_auto_from_rs(reader).unwrap();
 
@@ -357,6 +359,10 @@ impl FilesMap {
 
                 if workbook.worksheets().len() > 1 {
                     return Err(Error::SheetLimitExceeded);
+                }
+
+                if name == "main-file" {
+                    is_main = true;
                 }
 
                 if let Some(range) = workbook.worksheet_range_at(0) {
@@ -367,7 +373,7 @@ impl FilesMap {
                         other_name.clone(),
                         "unknown".to_string(),
                         rows,
-                        false,
+                        is_main,
                     ));
                 }
 
@@ -383,13 +389,12 @@ impl FilesMap {
             }
         }
 
-
+        // set the right dates, index based
         files.iter_mut().enumerate().for_each(|(i, file)| {
             file.last_modified = dates[i].clone();
         });
 
         dates.clear();
-
 
         files.iter().for_each(|v| {
             println!(
@@ -401,40 +406,56 @@ impl FilesMap {
             );
         });
 
-        let mut first_rows: Vec<DataType> = files
-            .first()
-            .unwrap()
-            .rows
-            .first()
-            .unwrap()
+
+        let final_headers = files
             .iter()
-            .map(|data| data.to_owned())
-            .collect();
+            .flat_map(|x| {
+                x.rows
+                    .first()
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect_vec()
+            })
+            .collect_vec();
+
+        let final_headers = final_headers.into_iter().unique().collect_vec();
+
+        let mut final_headers = final_headers
+            .iter()
+            .map(|x| DataType::String(x.to_string()))
+            .collect_vec();
+
+        final_headers
+            .iter()
+            .for_each(|x| println!("final_headers: {:?}", &x));
 
         println!("Merging files...");
 
         let mut acc_width = 0;
+
+        // merging the files's rows into one big vec
         let mut values_rows: Vec<Vec<DataType>> = files
             .iter()
             .enumerate()
-            .flat_map(|(i, inner_vec)| {
-                let main_data: Vec<Vec<DataType>> = inner_vec
+            .flat_map(|(i, file)| {
+                let main_data: Vec<Vec<DataType>> = file
                     .rows
                     .iter()
                     .skip(1)
                     .enumerate()
-                    .map(|(j, file)| {
+                    .map(|(j, rows)| {
                         let mut intro_headers: Vec<DataType> = vec![];
                         let cur_row_values: Vec<DataType> =
-                            file.iter().map(|row_data| row_data.to_owned()).collect();
+                            rows.iter().map(|row_data| row_data.to_owned()).collect();
 
-                        intro_headers.push(DataType::String(inner_vec.last_modified.to_owned()));
+                        intro_headers.push(DataType::String(file.last_modified.to_owned()));
                         intro_headers.push(DataType::Int((i + 1) as i64));
                         intro_headers.push(DataType::Int((acc_width + 1) as i64));
                         intro_headers.push(DataType::String(
                             (i + 1).to_string() + "-" + ((j) + 1).to_string().as_str(),
                         ));
-                        intro_headers.push(DataType::String(inner_vec.name.clone()));
+                        intro_headers.push(DataType::String(file.name.replace("-MAIN", "")));
 
                         acc_width += 1;
 
@@ -458,15 +479,13 @@ impl FilesMap {
         .map(|x| DataType::String(x.to_string()))
         .collect::<Vec<DataType>>();
 
-        extra_headers.append(&mut first_rows);
+        extra_headers.append(&mut final_headers);
 
         values_rows.insert(0, extra_headers);
 
-        // len of values_rows
         let len = values_rows.len();
         println!("len: {:?}", &len);
 
-        // FIXME: I don't remember
         let headers = &values_rows.clone()[0];
         let mut filtered_rows: Vec<Vec<DataType>> = vec![];
 
