@@ -14,7 +14,7 @@ pub struct Search {
 
 // TODO: Fix the visibility of structs like this
 pub struct SearchFiles {
-    pub rows: Vec<Vec<DataType>>,
+    pub rows: Vec<Vec<String>>,
     pub conditions: Vec<Search>,
 }
 
@@ -26,13 +26,7 @@ impl SearchFiles {
         // write manually to the worksheet
         for (i, row) in self.rows.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
-                let _ = match cell {
-                    DataType::String(s) => worksheet.write_string(i as u32, j as u16, s),
-                    DataType::Int(n) => worksheet.write_number(i as u32, j as u16, *n as u32),
-                    DataType::Float(f) => worksheet.write_number(i as u32, j as u16, *f),
-
-                    _ => worksheet.write_string(i as u32, j as u16, ""),
-                };
+                worksheet.write_string(i as u32, j as u16, cell);
             }
         }
 
@@ -45,7 +39,7 @@ impl SearchFiles {
         Ok(buf)
     }
 
-    pub fn write_to_vec(&self) -> Vec<Vec<DataType>> {
+    pub fn write_to_vec(&self) -> Vec<Vec<String>> {
         self.rows.clone()
     }
 }
