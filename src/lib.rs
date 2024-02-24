@@ -421,7 +421,6 @@ impl FilesMap {
 
         println!("Merging files...");
 
-        let _acc_width = 0;
 
         // merging the files's rows into one big vec
         // let mut values_rows: Vec<Vec<DataType>> = files
@@ -485,20 +484,22 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
 
     let mut headers: Vec<String> = vec![];
 
-    let filtered_files_title_bars: Vec<(u32, Vec<String>)> = vec![];
+    let mut filtered_files_title_bars: Vec<(usize, Vec<String>)> = vec![];
+    let mut acc_width = 0;
 
-    for file in &files {
+    for (i, file) in &files.iter().enumerate().collect_vec() {
         let mut is_matched = false;
         let mut new_file_rows: Vec<Vec<String>> = vec![];
         let points_and_rows_cur_file: (u32, Vec<String>) = (0, vec![]);
-        let points: u32 = 0;
+        let mut points: usize = 0;
 
         for search in &conditions.conditions {
             let current_file_rows = &file.rows;
 
             headers = current_file_rows.to_owned().first().unwrap().clone();
 
-            for row in current_file_rows {
+            for (j, row) in current_file_rows.iter().enumerate().collect_vec() {
+                acc_width += 1;
                 let filtered_row = row.iter().filter(|x| **x == search.data).collect_vec();
 
                 if filtered_row.is_empty() {
@@ -508,7 +509,11 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
 
                 println!("we found a match: {:?}", &search.data);
 
-                let dups = row.iter().duplicates().collect_vec();
+                let dups = row
+                    .iter()
+                    .duplicates()
+                    .filter(|x| **x == search.data)
+                    .collect_vec();
 
                 // TODO: handle duplicates, because it could match twice, and have wrong
                 // title headers
@@ -561,13 +566,58 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
                     })
                 }
 
+                // points handling
+
+                // if we have duplicates, then add a point only for those whose title matches the
+                // query title
+                if !dups.is_empty() {
+                    let idxs = find_dup_indices(dups[0], row);
+                    println!("Duplicate we found {:?}", dups[0]);
+
+                    for idx in idxs {
+                        if let Some(title) = &search.title {
+                            if !title.is_empty() {
+                                println!("Comparing {:?} with {:?}", headers[idx], *title);
+                                if headers[idx] == *title {
+                                    points += 1;
+                                }
+                            } else {
+                                points += 1;
+                            }
+                        }
+                    }
+                } else {
+                    // otherwise, add a single point
+                    points += 1
+                }
+
                 // we push the row if it's matched
                 if is_matched {
-                    new_file_rows.push(row.to_vec());
-                    filtered_rows.push(row.to_vec());
+
+                    let mut final_row = vec![];
+
+
+
+                    let mut intro_headers = vec![];
+
+
+                    intro_headers.push(file.last_modified.to_owned());
+                    intro_headers.push((i + 1).to_string());
+                    intro_headers.push((acc_width + 1).to_string());
+                    intro_headers.push(
+                        (i + 1).to_string() + "-" + ((j) + 1).to_string().as_str(),
+                    );
+                    intro_headers.push(file.name.replace("-MAIN", ""));
+
+                    final_row = [intro_headers, row.to_vec()].concat();
+
+                    new_file_rows.push(final_row.to_vec());
+                    filtered_rows.push(final_row.to_vec());
                 }
             }
         }
+
+        filtered_files_title_bars.push((points, headers.clone()));
 
         filtered_files.push(File {
             rows: new_file_rows,
@@ -577,6 +627,10 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
             id: file.id,
         });
     }
+
+    let headers = merge_title_bars(filtered_files_title_bars);
+    println!("final bar {:?}", headers);
+    filtered_rows.insert(0, headers);
 
     filtered_rows
 }
@@ -591,11 +645,73 @@ fn find_dup_indices(dup: &str, vec: &[impl AsRef<str>]) -> Vec<usize> {
     indices
 }
 
+fn merge_title_bars(title_bars: Vec<(usize, Vec<String>)>) -> Vec<String> {
+    let highest_points_idx = title_bars.iter().map(|x| x.0).position_max().unwrap();
+    let highest_points_bar = title_bars.get(highest_points_idx).unwrap();
+
+    title_bars.iter().for_each(|x| println!("{:?}", x));
+
+    println!("highest idx {:?}", highest_points_idx);
+    println!("highest bar {:?}", highest_points_bar);
+
+    let mut title_bars_clone = title_bars.clone();
+    title_bars_clone.remove(highest_points_idx);
+
+    let title_bar_rows = title_bars_clone
+        .iter()
+        .flat_map(|x| x.1.clone())
+        .collect_vec();
+
+    let result = highest_points_bar
+        .1
+        .clone()
+        .into_iter()
+        .chain(title_bar_rows.clone().into_iter())
+        .unique()
+        .collect_vec();
+
+    println!(
+        "chaining {:?} with {:?} into {:?}",
+        highest_points_bar.1.clone(),
+        title_bar_rows,
+        result
+    );
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn test_find_dup_indices() {
         assert_eq!(find_dup_indices("C", &["A", "B", "C", "C"]), vec![2, 3]);
+    }
+
+    #[test]
+    fn test_merge_bars() {
+        let vec1 = vec!["A", "B", "C"];
+        let vec2 = vec!["A", "B", "C", "D", "E"];
+        let vec3 = vec!["D", "E", "F"];
+
+        // let result = vec1.into_iter().chain(vec2).collect::<HashSet<_>>().into_iter().collect_vec();
+        let result = vec1.clone().into_iter().chain(vec2).unique().collect_vec();
+        let result2 = vec1.into_iter().chain(vec3).unique().collect_vec();
+
+        assert_eq!(
+            result,
+            ["A", "B", "C", "D", "E"]
+                .iter()
+                .map(|x| x.to_string())
+                .collect_vec()
+        );
+
+        assert_eq!(
+            result2,
+            ["A", "B", "C", "D", "E", "F"]
+                .iter()
+                .map(|x| x.to_string())
+                .collect_vec()
+        )
     }
 }

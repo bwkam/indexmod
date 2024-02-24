@@ -494,6 +494,7 @@ dependencies = [
  "calamine",
  "chrono",
  "indexmap 2.1.0",
+ "indexset",
  "itertools",
  "rust_xlsxwriter",
  "serde",
@@ -535,6 +536,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "ftree"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ce3d64f1758231cab648f3272373d7c7a20b932f2bb9a129b764b136b107e1e"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -767,6 +777,15 @@ dependencies = [
  "equivalent",
  "hashbrown 0.14.3",
  "serde",
+]
+
+[[package]]
+name = "indexset"
+version = "0.3.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48262c7d74a4bc17e029e32ac47f7a37756d15ccf5b4f8772e1aeb6de26fc84b"
+dependencies = [
+ "ftree",
 ]
 
 [[package]]
