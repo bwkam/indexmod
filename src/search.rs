@@ -1,5 +1,5 @@
 use anyhow::Context;
-use calamine::DataType;
+
 use rust_xlsxwriter::Workbook;
 use serde::Deserialize;
 

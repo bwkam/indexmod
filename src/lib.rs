@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io::Cursor, path::Path};
+use std::{io::Cursor, path::Path};
 
 use crate::error::{Error, Result};
 use crate::merge::MergeFiles;
@@ -185,7 +185,7 @@ impl FilesMap {
                 || content_type == Some("application/vnd.ms-excel".to_string())
             {
                 let bytes = bytes.to_vec();
-                let mut is_main = false;
+                let is_main = false;
                 let reader = Cursor::new(bytes);
                 let mut workbook = calamine::open_workbook_auto_from_rs(reader).unwrap();
 
@@ -303,7 +303,7 @@ impl FilesMap {
             .collect();
 
         // modify the headers
-        let mut extra_headers = [
+        let extra_headers = [
             "Date Modified",
             "Number of Files",
             "Series Number",
@@ -372,6 +372,9 @@ impl FilesMap {
                             row.iter()
                                 .map(|cell| match cell {
                                     DataType::String(s) => s.to_owned(),
+                                    DataType::Int(s) => s.to_string(),
+                                    DataType::Float(s) => s.to_string(),
+                                    DataType::Empty => " ".to_string(),
                                     _ => "empty".to_owned(),
                                 })
                                 .collect_vec()
@@ -418,7 +421,7 @@ impl FilesMap {
 
         println!("Merging files...");
 
-        let mut acc_width = 0;
+        let _acc_width = 0;
 
         // merging the files's rows into one big vec
         // let mut values_rows: Vec<Vec<DataType>> = files
@@ -454,7 +457,7 @@ impl FilesMap {
         //     .collect();
 
         // modify the headers
-        let mut intro_headers = [
+        let _intro_headers = [
             "Date Modified",
             "Number of Files",
             "Series Number",
@@ -482,13 +485,13 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
 
     let mut headers: Vec<String> = vec![];
 
-    let mut filtered_files_title_bars: Vec<(u32, Vec<String>)> = vec![];
+    let filtered_files_title_bars: Vec<(u32, Vec<String>)> = vec![];
 
     for file in &files {
         let mut is_matched = false;
         let mut new_file_rows: Vec<Vec<String>> = vec![];
-        let mut points_and_rows_cur_file: (u32, Vec<String>) = (0, vec![]);
-        let mut points: u32 = 0;
+        let points_and_rows_cur_file: (u32, Vec<String>) = (0, vec![]);
+        let points: u32 = 0;
 
         for search in &conditions.conditions {
             let current_file_rows = &file.rows;
@@ -496,73 +499,75 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
             headers = current_file_rows.to_owned().first().unwrap().clone();
 
             for row in current_file_rows {
-                let filtered_row = row
-                    .iter()
-                    .filter(|x| **x == search.data.to_owned());
+                let filtered_row = row.iter().filter(|x| **x == search.data).collect_vec();
 
-                if row.contains(&search.data.to_owned()) {
-                    println!("we found a match: {:?}", &search.data);
-                    let index = row
-                        .iter()
-                        .position(|x| *x == search.data.to_owned())
-                        .unwrap();
+                if filtered_row.is_empty() {
+                    // if there are even no matches, then skip the next row
+                    continue;
+                }
 
-                    // data is matched, check other things now
-                    is_matched = true;
+                println!("we found a match: {:?}", &search.data);
 
-                    // title
-                    if let Some(title) = &search.title {
-                        if !title.is_empty() {
-                            is_matched = headers[index] == title.to_owned();
-                            // if the title doesn't match, then skip this iteration, it's not what we want
-                            if !is_matched {
-                                continue;
-                            }
+                let dups = row.iter().duplicates().collect_vec();
+
+                // TODO: handle duplicates, because it could match twice, and have wrong
+                // title headers
+                let index = row.iter().position(|x| *x == search.data).unwrap();
+
+                // data is matched, check the title
+                is_matched = true;
+
+                // title
+                if let Some(title) = &search.title {
+                    if !title.is_empty() {
+                        is_matched = headers[index] == *title;
+                        // if the title doesn't match, then skip to the next cell, it's not what we want
+                        if !is_matched {
+                            continue;
                         }
                     }
+                }
 
-                    // intersections
-                    if is_matched && !search.intersections.is_empty() {
-                        println!("we are in intersections");
-                        println!("intersections: {:?}", &search.intersections);
+                // intersections
+                if is_matched && !search.intersections.is_empty() {
+                    println!("we are in intersections");
+                    println!("intersections: {:?}", &search.intersections);
 
-                        search.intersections.iter().for_each(|search| {
-                            if row.contains(&search.clone().data) {
-                                println!("the row matched data: {:?}", &search.data);
+                    search.intersections.iter().for_each(|search| {
+                        if row.contains(&search.clone().data) {
+                            println!("the row matched data: {:?}", &search.data);
 
-                                let index = row
-                                    .iter()
-                                    .position(|x| x == &search.data.to_string())
-                                    .unwrap();
+                            let index = row
+                                .iter()
+                                .position(|x| x == &search.data.to_string())
+                                .unwrap();
 
-                                println!("index matched: {:?}", &index);
+                            println!("index matched: {:?}", &index);
 
-                                if let Some(title) = &search.title {
-                                    println!("we be looking for title: {:?}", &title);
-                                    is_matched = headers[index] == title.clone();
+                            if let Some(title) = &search.title {
+                                println!("we be looking for title: {:?}", &title);
+                                is_matched = headers[index] == title.clone();
 
-                                    if is_matched {
-                                        println!("we found the title: {:?}", &title);
-                                    } else {
-                                        println!("we didn't find the title: {:?}", &title)
-                                    }
+                                if is_matched {
+                                    println!("we found the title: {:?}", &title);
+                                } else {
+                                    println!("we didn't find the title: {:?}", &title)
                                 }
-                            } else {
-                                println!("the row didn't match data: {:?}", &search.data);
-                                is_matched = false;
                             }
-                        })
-                    }
+                        } else {
+                            println!("the row didn't match data: {:?}", &search.data);
+                            is_matched = false;
+                        }
+                    })
+                }
 
-                    // we push the row if it's matched
-                    if is_matched {
-                        new_file_rows.push(row.to_vec());
-                        filtered_rows.push(row.to_vec());
-                    }
+                // we push the row if it's matched
+                if is_matched {
+                    new_file_rows.push(row.to_vec());
+                    filtered_rows.push(row.to_vec());
                 }
             }
         }
-
 
         filtered_files.push(File {
             rows: new_file_rows,
@@ -574,4 +579,23 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
     }
 
     filtered_rows
+}
+
+fn find_dup_indices(dup: &str, vec: &[impl AsRef<str>]) -> Vec<usize> {
+    let mut indices = vec![];
+    for (i, x) in vec.iter().enumerate() {
+        if x.as_ref() == dup {
+            indices.push(i)
+        }
+    }
+    indices
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_find_dup_indices() {
+        assert_eq!(find_dup_indices("C", &["A", "B", "C", "C"]), vec![2, 3]);
+    }
 }
