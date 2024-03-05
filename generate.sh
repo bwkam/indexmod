@@ -1,1 +1,1 @@
-zip -r search-app-0.1.zip src assets templates Cargo.toml Cargo.lock tests
+zip -r search-app-2_4.zip src assets templates Cargo.toml Cargo.lock tests
