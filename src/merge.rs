@@ -1,10 +1,9 @@
 use crate::error::Result;
 use anyhow::Context;
-use calamine::DataType;
 use rust_xlsxwriter::Workbook;
 
 pub struct MergeFiles {
-    pub rows: Vec<Vec<DataType>>,
+    pub rows: Vec<Vec<String>>,
 }
 
 // TODO: write a trait instead for both search and merge
@@ -17,17 +16,7 @@ impl MergeFiles {
         // write manually to the worksheet
         for (i, row) in self.rows.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
-                let _ = match cell {
-                    DataType::String(s) => worksheet.write_string(i as u32, j as u16, s),
-                    DataType::Int(n) => worksheet.write_number(i as u32, j as u16, *n as u32),
-                    DataType::Float(f) => worksheet.write_number(i as u32, j as u16, *f),
-                    // DataType::DateTimeIso(dt) => worksheet.write_datetime(
-                    //     i as u32,
-                    //     j as u16,
-                    //     ExcelDateTime::parse_from_str(dt).context("Failed to parse date")?,
-                    // ),
-                    _ => worksheet.write_string(i as u32, j as u16, ""),
-                };
+                worksheet.write_string(i as u32, j as u16, cell);
             }
         }
 
@@ -39,7 +28,7 @@ impl MergeFiles {
         Ok(buf)
     }
 
-    pub fn write_to_vec(&self) -> Vec<Vec<DataType>> {
+    pub fn write_to_vec(&self) -> Vec<Vec<String>> {
         self.rows.clone()
     }
 }
