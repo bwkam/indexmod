@@ -26,7 +26,7 @@ impl SearchFiles {
         // write manually to the worksheet
         for (i, row) in self.rows.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
-                worksheet.write_string(i as u32, j as u16, cell);
+                worksheet.write_string(i as u32, j as u16, cell).context("error writing to new cell")?;
             }
         }
 
