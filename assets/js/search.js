@@ -13,6 +13,11 @@ document.addEventListener("DOMContentLoaded", () => {
   let mainFileName;
   const formData = new FormData();
 
+function updateTotalCount() {
+  let total_count = document.getElementById("total-count");
+  total_count.textContent = `Total ${excelList.children.length} files`;
+}
+
   /////////// ______ ///////////
   let conditionsObject = {
     conditions: [],
@@ -210,6 +215,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     console.log(formData);
+    updateTotalCount();
 
     await zipReader.close();
   });
@@ -275,6 +281,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       console.log(formData);
     }
+
+      updateTotalCount();
   });
 
 
