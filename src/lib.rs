@@ -38,7 +38,7 @@ pub struct File {
     pub last_modified: String,
     pub name: String,
     /// first is main rows, second is the intro fields
-    pub rows: (Vec<Vec<String>>, Vec<Vec<String>>),
+    pub rows: Vec<Vec<String>>,
     pub is_main: bool,
     pub id: uuid::Uuid,
 }
@@ -48,7 +48,7 @@ impl File {
     pub fn new(
         name: String,
         last_modified: String,
-        rows: (Vec<Vec<String>>, Vec<Vec<String>>),
+        rows: Vec<Vec<String>>,
         is_main: bool,
         id: Uuid,
     ) -> Self {
@@ -216,7 +216,7 @@ impl FilesMap {
                     files.push(File::new(
                         other_name.clone(),
                         "unknown".to_string(),
-                        (rows, vec![]),
+                        rows,
                         is_main,
                         Uuid::new_v4(),
                     ));
@@ -249,7 +249,7 @@ impl FilesMap {
             println!(
                 "Name: {:?}, rows: {:?}, is_main: {:?}, date_modified: {:?}",
                 v.name,
-                v.rows.0.len(),
+                v.rows.len(),
                 v.is_main,
                 v.last_modified
             );
@@ -270,7 +270,7 @@ impl FilesMap {
         // cut n rows from each non-main file
         if cutting_rows > 0 {
             files.iter_mut().filter(|x| !x.is_main).for_each(|v| {
-                v.rows = (v.rows.0.drain((cutting_rows - 1)..).collect(), vec![]);
+                v.rows = v.rows.drain((cutting_rows - 1)..).collect();
             });
         }
 
@@ -281,7 +281,6 @@ impl FilesMap {
             .flat_map(|(i, inner_vec)| {
                 let main_data: Vec<Vec<String>> = inner_vec
                     .rows
-                    .0
                     .iter()
                     .skip(1)
                     .enumerate()
@@ -391,7 +390,7 @@ impl FilesMap {
                     files.push(File::new(
                         other_name.clone(),
                         "unknown".to_string(),
-                        (rows, vec![]),
+                        rows,
                         false,
                         Uuid::new_v4(),
                     ));
@@ -422,7 +421,7 @@ impl FilesMap {
             trace!(
                 "Name: {:?}, rows: {:?}, is_main: {:?}, date_modified: {:?}",
                 v.name,
-                v.rows.0.len(),
+                v.rows.len(),
                 v.is_main,
                 v.last_modified
             );
@@ -456,9 +455,6 @@ impl FilesMap {
 }
 
 fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String>> {
-
-
-
     let mut filtered_rows: Vec<Vec<String>> = vec![];
     let mut filtered_files: Vec<File> = vec![];
     let mut headers: Vec<String> = vec![];
@@ -469,43 +465,35 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
     type RowNumInfo = (String, String, String);
     type FileRowNumInfo = Vec<RowNumInfo>;
 
-    let mut total_rows_count: usize = 0;
     // calculate the num of files, series num, and count num
-    let numbers: Vec<(Uuid, FileRowNumInfo)> = files
-        .iter()
-        .enumerate()
-        .map(|(i, file)| {
-            let file_id = file.id;
-            let mut entry = (file_id, vec![]);
-
-            // loop through the rows
-            for j in 0..file.rows.0.len() {
-                entry.1.push((
-                    (i + 1).to_string(),
-                    total_rows_count.to_string(),
-                    format!("{}-{}", i + 1, j + 1),
-                ));
-                total_rows_count += 1;
-            }
-
-            entry
-        })
-        .collect();
 
     // dbg!(&numbers);
 
-    for (_, file) in &files.iter().enumerate().collect_vec() {
+    for (i, file) in &files.iter().enumerate().collect_vec() {
         let mut is_matched;
         let mut new_file_rows: Vec<Vec<String>> = vec![];
         let mut intro_file_rows: Vec<Vec<String>> = vec![];
         let mut points: usize = 0;
 
+        let numbers: FileRowNumInfo = file
+            .rows
+            .iter()
+            .enumerate()
+            .map(|(j, _)| {
+                (
+                    (i + 1).to_string(),
+                    (j + 1).to_string(),
+                    format!("{}-{}", i + 1, j + 1),
+                )
+            })
+            .collect();
+
         for search in &conditions.conditions {
             let current_file_rows = &file.rows;
 
-            headers = current_file_rows.to_owned().0.first().unwrap().clone();
+            headers = current_file_rows.to_owned().first().unwrap().clone();
 
-            for (j, row) in current_file_rows.0.iter().enumerate().collect_vec() {
+            for (j, row) in current_file_rows.iter().enumerate().collect_vec() {
                 acc_width += 1;
                 let filtered_row = row
                     .iter()
@@ -580,30 +568,24 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
 
                 // we push the row if it's matched
                 if is_matched {
-                    let file_num_row_info = numbers
-                        .iter()
-                        .find(|x| x.0 == file.id)
-                        .unwrap()
-                        .1
-                        .get(j)
-                        .unwrap();
+                    // let row_info = numbers.get(j).unwrap();
 
-                    let intro_headers = vec![
-                        file.last_modified.to_owned(), // last modified
-                        file_num_row_info.0.clone(),   // file number
-                        file_num_row_info.1.clone(),   // series number
-                        file_num_row_info.2.clone(),   // count number
-                        file.name.clone(),             // file name
-                    ];
+                    // let intro_headers = vec![
+                    //     file.last_modified.to_owned(), // last modified
+                    //     row_info.0.clone(),            // file number
+                    //     row_info.1.clone(),            // series number
+                    //     row_info.2.clone(),            // count number
+                    //     file.name.clone(),             // file name
+                    // ];
 
                     // dbg!(&intro_headers);
 
-                    intro_file_rows.push(intro_headers.clone());
+                    // intro_file_rows.push(intro_headers.clone());
 
-                    let final_row = [intro_headers, row.to_vec()].concat();
+                    // let final_row = [intro_headers, row.to_vec()].concat();
 
                     new_file_rows.push(row.to_vec());
-                    filtered_rows.push(final_row.to_vec());
+                    filtered_rows.push(row.to_vec());
                 }
             }
         }
@@ -611,13 +593,14 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
         filtered_files_title_bars.push((points, headers.clone()));
 
         filtered_files.push(File {
-            rows: (new_file_rows, intro_file_rows),
+            rows: new_file_rows,
             is_main: false,
             name: file.name.clone(),
             last_modified: file.last_modified.clone(),
             id: file.id,
         });
     }
+
 
     let mut headers = merge_title_bars(filtered_files_title_bars);
     let mut file_id_to_print = Uuid::new_v4();
@@ -629,11 +612,10 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
             .find(|x| x.id == file.id)
             .unwrap()
             .rows
-            .0
             .first()
             .unwrap();
 
-        file.rows.0.iter_mut().for_each(|cells| {
+        file.rows.iter_mut().for_each(|cells| {
             let cells_clone = cells.clone();
 
             let cells_and_headers: HashMap<_, _> = cells_clone
@@ -669,29 +651,30 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
         });
     });
 
-    // let mut file_count: usize = 0;
 
-    // filtered_files.iter().for_each(|file| {
-        // file_count = 0;
+    filtered_files.iter_mut().enumerate().for_each(|(i, file)| {
+        file.rows.iter_mut().enumerate().for_each(|(j, row)| {
+            let mut old_row = std::mem::take(row);
+            let mut new_row = vec![];
+            let mut intro = vec![
+                file.last_modified.clone(),
+                (i + 1).to_string(),
+                (j + 1).to_string(),
+                format!("{}-{}", i + 1, j + 1),
+                file.name.clone(),
+            ];
 
+            new_row.append(&mut intro);
+            new_row.append(&mut old_row);
 
-        // file.rows.0.iter_mut().for_each(|cells| {
-        //     let mut new_cells = vec![];
-        //     for field in file.rows.1[file_count].clone() {
-        //         new_cells.push(field);
-        //     }
-        //     new_cells.append(cells);
-        //
-        //     *cells = new_cells;
-        // });
+            *row = new_row;
+        })
+    });
 
-        // file_count += 1;
-    // });
-
-    // let mut final_rows = filtered_files
-    //     .iter()
-    //     .flat_map(|file| file.rows.0.clone())
-    //     .collect_vec();
+    let mut final_rows = filtered_files
+        .iter()
+        .flat_map(|file| file.rows.clone())
+        .collect_vec();
 
     headers.dedup();
 

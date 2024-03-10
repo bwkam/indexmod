@@ -329,7 +329,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `merge${formatDate(
+    a.download = `search${formatDate(
       date,
       "mmddyy"
     )}${time.trim()}.xlsx`;
