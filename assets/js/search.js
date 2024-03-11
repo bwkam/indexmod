@@ -157,14 +157,11 @@ templateFileInput.addEventListener('change', (e) => {
       e.target.parentNode.after(inputPair);
       e.target.remove();
 
-      console.log("adding a new intersection");
-
 
       let conditionIndex = Array.from(
         inputPair.parentNode.parentNode.children
       ).indexOf(inputPair.parentNode);
 
-      console.log("conditions idnexll: ", conditionIndex);
 
       // Add a new intersection to the last condition in the formData object
       conditionsObject.conditions[
