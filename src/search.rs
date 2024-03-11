@@ -30,7 +30,6 @@ impl SearchFiles {
         let pink_bg = Format::new().set_background_color(Color::Pink);
 
         // write manually to the worksheet
-
         let headers = self.rows.0.remove(0);
 
         for (i, h) in headers.iter().enumerate() {
@@ -43,11 +42,17 @@ impl SearchFiles {
                     .write_string(0, i as u16, h)
                     .context("error writing header")?;
             }
-        };
+        }
 
         for (i, row) in self.rows.0.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
                 let mut segment = vec![];
+                if j <= 4 {
+                    worksheet
+                        .write_string((i + 1) as u32, j as u16, cell)
+                        .unwrap();
+                    continue;
+                }
 
                 self.conditions.iter().for_each(|c| {
                     let pat = format!(r"(.*)(?<data>{})(.*)", c.data);

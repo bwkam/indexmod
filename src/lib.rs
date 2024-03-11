@@ -724,6 +724,9 @@ fn merge_title_bars(title_bars: Vec<(usize, Vec<String>)>) -> (Vec<String>, Vec<
         .unique()
         .collect_vec();
 
+    dbg!(&main_points_bar);
+    dbg!(&title_bar_rows);
+
     // TODO: make this a hashset from the beginning
     let intersections = main_points_bar
         .clone()
