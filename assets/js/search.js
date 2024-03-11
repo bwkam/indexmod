@@ -1,6 +1,12 @@
+const conditionsObject = {
+  conditions: [],
+};
+
 document.addEventListener("DOMContentLoaded", () => {
   /////////// Elements ///////////
   const zipFileInput = document.getElementById("zip-input");
+  const folderFileInput = document.getElementById("folder-input");
+  const templateFileInput = document.getElementById("template-input");
 
   const excelList = document.getElementById("excel-list");
   const excelFileInput = document.getElementById("excel-file");
@@ -11,7 +17,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let loading = false;
   let mainFileName;
-  const formData = new FormData();
+  let formData = new FormData();
+
 
 function updateTotalCount() {
   let total_count = document.getElementById("total-count");
@@ -19,10 +26,6 @@ function updateTotalCount() {
 }
 
   /////////// ______ ///////////
-  let conditionsObject = {
-    conditions: [],
-  };
-
   document.addEventListener("click", (e) => {
     console.log(conditionsObject);
   });
@@ -49,6 +52,78 @@ function updateTotalCount() {
     });
   });
 
+
+templateFileInput.addEventListener('change', (e) => {
+  let file = e.target.files[0];
+  let reader = new FileReader();
+
+  reader.onload = function(e) {
+    var data = e.target.result;
+    var workbook = XLSX.read(data, {
+      type: "binary"
+    });
+
+    var first_sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    const raw_data = XLSX.utils.sheet_to_json(first_sheet, {header: 1});
+    console.log(raw_data);
+
+    for (let i = 1; i < raw_data.length; i++) {
+      let title = raw_data[i][0];
+      let data = raw_data[i][1];
+      let intersections = [];
+
+      for (let j = 2; j < raw_data[i].length; j += 2) {
+        let intersectionTitle = raw_data[i][j];
+        let intersectionData = raw_data[i][j + 1];
+
+        intersections.push({
+          title: intersectionTitle,
+          data: intersectionData,
+          intersections: []
+        });
+      }
+
+      conditionsObject.conditions.push({
+        title: title,
+        data: data,
+        intersections: intersections
+      });
+    }
+
+    console.log(conditionsObject);
+
+    // Build DOM input pairs based on the conditionsObject
+    for (let condition of conditionsObject.conditions) {
+      let inputPair = document.createElement("div");
+      inputPair.className = "inputPair";
+      inputPair.style.display = "flex";
+      inputPair.innerHTML = `
+        <button class="deleteButton">Delete</button>
+        <div class="pairContainer" style="display: flex;">
+          <input type="text" placeholder="Title" class="titleInput" value="${condition.title == undefined ? "" : condition.title}">
+          <input type="text" placeholder="Data" class="dataInput" value="${condition.data}">
+          <button class="andButton">And</button>
+        </div>
+      `;
+      document.getElementById("search").appendChild(inputPair);
+
+      for (let intersection of condition.intersections) {
+        let intersectionPair = document.createElement("div");
+        intersectionPair.className = "pairContainer";
+        intersectionPair.style.display = "flex";
+        intersectionPair.innerHTML = `
+          <input type="text" placeholder="Title" class="intersectionTitleInput" value="${condition.title == undefined ? "" : condition.title}">
+          <input type="text" placeholder="Data" class="intersectionDataInput" value="${intersection.data}">
+          <button class="andButton">And</button>
+        `;
+        inputPair.querySelector(".pairContainer").appendChild(intersectionPair);
+      }
+    }
+  };
+
+  reader.readAsBinaryString(file);
+});
   document.addEventListener("click", function (e) {
     if (e.target && e.target.classList.contains("andButton")) {
       e.preventDefault();
@@ -133,6 +208,56 @@ function updateTotalCount() {
         e.target.classList.contains("intersectionTitleInput") ? "title" : "data"
       ] = e.target.value;
     }
+  });
+
+  folderFileInput.addEventListener('change', async(e) => {
+        const files = e.target.files;
+
+        for (file of files) {
+            formData.append("excel-file[]", file);
+            const div = document.createElement("div");
+            const li = document.createElement("li");
+            const a = document.createElement("a");
+            const getFileButton = document.createElement("button");
+            getFileButton.textContent = "Get File";
+            getFileButton.addEventListener("click", (e) => {
+              e.preventDefault();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = file.name;
+              a.click();
+            });
+
+            li.textContent = file.name;
+            excelList.appendChild(li);
+
+            const button = document.createElement("button");
+            button.textContent = "X";
+            button.addEventListener("click", () => {
+              let li = e.target.closest("li");
+              let nodes = Array.from(li.closest("ul").children);
+              let index = nodes.indexOf(li);
+
+              console.log("Index: " + index);
+
+              let values = formData.getAll("excel-file[]");
+              values.splice(index, 1);
+              formData.delete("excel-file[]");
+
+              values.forEach((value, _) => {
+                formData.append("excel-file[]", value);
+              });
+
+              li.remove();
+              console.log(formData);
+            });
+
+            div.appendChild(button);
+            div.appendChild(getFileButton);
+
+            li.appendChild(div);
+        }
   });
 
   zipFileInput.addEventListener("change", async (e) => {
@@ -289,6 +414,10 @@ function updateTotalCount() {
   submitExcelButton.addEventListener("click", async (e) => {
     e.preventDefault();
     loading = true;
+
+    let mark = document.getElementById("mark");
+    mark.style.display = "flex";
+
     // setLoading(true);
 
 
@@ -315,6 +444,7 @@ function updateTotalCount() {
       body: formData,
     });
     if (!res.ok) {
+      mark.style.display = "none";
       const error = await res.json();
       alert(error.error);
       throw error;
@@ -348,7 +478,14 @@ function updateTotalCount() {
 
     console.log("Done!");
 
+
+    // cleanup
     loading = false;
+    mark.style.display = "none";
+    excelList.textContent = '';
+    formData = new FormData();
+    
+
     // setLoading(loading);
   });
 

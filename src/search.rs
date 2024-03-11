@@ -1,6 +1,6 @@
 use anyhow::Context;
 
-use rust_xlsxwriter::Workbook;
+use rust_xlsxwriter::{Color, Format, Workbook};
 use serde::Deserialize;
 
 use crate::error::Result;
@@ -26,7 +26,9 @@ impl SearchFiles {
         // write manually to the worksheet
         for (i, row) in self.rows.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
-                worksheet.write_string(i as u32, j as u16, cell).context("error writing to new cell")?;
+                worksheet
+                    .write_string(i as u32, j as u16, cell)
+                    .context("error writing to new cell")?;
             }
         }
 
