@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::{io::Cursor, path::Path};
 
 use crate::error::{Error, Result};
@@ -446,10 +446,10 @@ impl FilesMap {
         .collect_vec();
 
         let mut filtered_rows = search_from_files(files, conditions.clone());
-        let header = filtered_rows.first().unwrap();
+        let header = filtered_rows.0.first().unwrap();
 
         let final_header = [intro_headers, header.clone()].concat();
-        filtered_rows[0] = final_header;
+        filtered_rows.0[0] = final_header;
 
         Ok(SearchFiles {
             rows: filtered_rows,
@@ -458,7 +458,7 @@ impl FilesMap {
     }
 }
 
-fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String>> {
+fn search_from_files(files: Vec<File>, conditions: Conditions) -> (Vec<Vec<String>>, Vec<String>) {
     let mut filtered_rows: Vec<Vec<String>> = vec![];
     let mut filtered_files: Vec<File> = vec![];
     let mut headers: Vec<String> = vec![];
@@ -648,7 +648,7 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
 
             let mut new_cells = vec![];
             new_cells.extend_from_slice(intro);
-            headers.iter().for_each(|header| {
+            headers.0.iter().for_each(|header| {
                 // before
                 // A B C D   |   A D C
                 // 1 2 3 4   |   1 4 3
@@ -680,11 +680,10 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> Vec<Vec<String
         .flat_map(|file| file.rows.clone())
         .collect_vec();
 
-    headers.dedup();
+    headers.0.dedup();
+    final_rows.insert(0, headers.0);
 
-    final_rows.insert(0, headers);
-
-    final_rows
+    (final_rows, headers.1)
 }
 
 fn find_dup_indices(dup: &str, vec: &[impl AsRef<str>]) -> Vec<usize> {
@@ -697,7 +696,7 @@ fn find_dup_indices(dup: &str, vec: &[impl AsRef<str>]) -> Vec<usize> {
     indices
 }
 
-fn merge_title_bars(title_bars: Vec<(usize, Vec<String>)>) -> Vec<String> {
+fn merge_title_bars(title_bars: Vec<(usize, Vec<String>)>) -> (Vec<String>, Vec<String>) {
     let mut title_bars_clone = title_bars
         .iter()
         .map(|x| {
@@ -718,12 +717,23 @@ fn merge_title_bars(title_bars: Vec<(usize, Vec<String>)>) -> Vec<String> {
         .flat_map(|x| x.1.clone())
         .collect_vec();
 
-    main_points_bar
+    let main_bar = main_points_bar
         .clone()
         .into_iter()
-        .chain(title_bar_rows)
+        .chain(title_bar_rows.clone())
         .unique()
-        .collect_vec()
+        .collect_vec();
+
+    // TODO: make this a hashset from the beginning
+    let intersections = main_points_bar
+        .clone()
+        .into_iter()
+        .collect::<HashSet<String>>()
+        .intersection(&title_bar_rows.into_iter().collect::<HashSet<String>>())
+        .map(|x| x.to_string())
+        .collect_vec();
+
+    (main_bar, intersections)
 }
 
 #[cfg(test)]

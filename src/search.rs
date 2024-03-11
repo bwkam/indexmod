@@ -16,20 +16,36 @@ pub struct Search {
 
 // TODO: Fix the visibility of structs like this
 pub struct SearchFiles {
-    pub rows: Vec<Vec<String>>,
+    pub rows: (Vec<Vec<String>>, Vec<String>),
     pub conditions: Vec<Search>,
 }
 
 impl SearchFiles {
-    pub fn write_to_buffer(&self) -> Result<Vec<u8>> {
+    pub fn write_to_buffer(&mut self) -> Result<Vec<u8>> {
         let mut workbook = Workbook::new();
         let worksheet = workbook.add_worksheet();
 
         let default = Format::default();
         let red = Format::new().set_font_color(Color::Red);
+        let pink_bg = Format::new().set_background_color(Color::Pink);
 
         // write manually to the worksheet
-        for (i, row) in self.rows.iter().enumerate() {
+
+        let headers = self.rows.0.remove(0);
+
+        for (i, h) in headers.iter().enumerate() {
+            if self.rows.1.contains(h) {
+                worksheet
+                    .write_string_with_format(0, i as u16, h, &pink_bg)
+                    .context("error writing header")?;
+            } else {
+                worksheet
+                    .write_string(0, i as u16, h)
+                    .context("error writing header")?;
+            }
+        };
+
+        for (i, row) in self.rows.0.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
                 let mut segment = vec![];
 
@@ -56,12 +72,14 @@ impl SearchFiles {
                 });
 
                 if cell.trim().is_empty() {
-                    worksheet.write_string(i as u32, j as u16, cell).unwrap();
+                    worksheet
+                        .write_string((i + 1) as u32, j as u16, cell)
+                        .unwrap();
                     continue;
                 }
 
                 worksheet
-                    .write_rich_string(i as u32, j as u16, segment.as_slice())
+                    .write_rich_string((i + 1) as u32, j as u16, segment.as_slice())
                     .unwrap();
             }
         }
@@ -78,6 +96,6 @@ impl SearchFiles {
     }
 
     pub fn write_to_vec(&self) -> Vec<Vec<String>> {
-        self.rows.clone()
+        self.rows.0.clone()
     }
 }
