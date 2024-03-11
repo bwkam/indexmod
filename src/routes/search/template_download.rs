@@ -45,6 +45,7 @@ pub async fn download(mut multipart: Multipart) -> Result<impl IntoResponse> {
         // intersections if not empty
         if !condition.intersections.is_empty() {
             for condition in &condition.intersections {
+                println!("pushing data to template");
                 vec.push(condition.data.clone());
                 if let Some(title) = &condition.title {
                     println!("title: {}", title);
@@ -68,9 +69,9 @@ pub async fn download(mut multipart: Multipart) -> Result<impl IntoResponse> {
     let longest_row = vec_to_write.iter().map(|row| row.len()).max().unwrap();
 
     // create the headers
-    for _ in 0..longest_row {
-        headers.push("Title".to_string());
-        headers.push("Data".to_string());
+    for _ in 0..(longest_row + 7) {
+        headers.push("DATA".to_string());
+        headers.push("TITLE".to_string());
     }
 
     // write the headers to the vec_to_write vec

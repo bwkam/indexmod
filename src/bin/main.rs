@@ -18,7 +18,7 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tracing::info;
 
-static VERSION: &str = "3.2";
+static VERSION: &str = "3.5";
 
 #[derive(askama::Template)]
 #[template(path = "merge.html")]

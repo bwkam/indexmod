@@ -37,8 +37,8 @@ function updateTotalCount() {
     inputPair.innerHTML = `
             <button class="deleteButton">Delete</button>
             <div class="pairContainer" style="display: flex;">
-                <input type="text" placeholder="Title" class="titleInput">
                 <input type="text" placeholder="Data" class="dataInput">
+                <input type="text" placeholder="Title" class="titleInput">
                 <button class="andButton">And</button>
             </div>
         `;
@@ -46,8 +46,8 @@ function updateTotalCount() {
 
     // Add a new condition to the formData object
     conditionsObject.conditions.push({
-      title: "",
       data: "",
+      title: "",
       intersections: [],
     });
   });
@@ -68,18 +68,28 @@ templateFileInput.addEventListener('change', (e) => {
     const raw_data = XLSX.utils.sheet_to_json(first_sheet, {header: 1});
     console.log(raw_data);
 
+    // Validate the file format
+    const expectedHeaders = ['DATA', 'TITLE'];
+    const actualHeaders = raw_data[0].map(header => header.trim());
+
+    if (raw_data.length < 2 || !expectedHeaders.every(header => actualHeaders.includes(header))) {
+      // Throw an error if the file doesn't match the expected format
+      alert("Invalid file format. The template should have at least one row with 'Title' and 'Data' columns.");
+      throw new Error("Invalid file format");
+    }
+
     for (let i = 1; i < raw_data.length; i++) {
-      let title = raw_data[i][0];
-      let data = raw_data[i][1];
+      let data = raw_data[i][0];
+      let title = raw_data[i][1];
       let intersections = [];
 
       for (let j = 2; j < raw_data[i].length; j += 2) {
-        let intersectionTitle = raw_data[i][j];
-        let intersectionData = raw_data[i][j + 1];
+        let intersectionData = raw_data[i][j];
+        let intersectionTitle = raw_data[i][j + 1];
 
         intersections.push({
-          title: intersectionTitle,
           data: intersectionData,
+          title: intersectionTitle,
           intersections: []
         });
       }
@@ -101,8 +111,8 @@ templateFileInput.addEventListener('change', (e) => {
       inputPair.innerHTML = `
         <button class="deleteButton">Delete</button>
         <div class="pairContainer" style="display: flex;">
+          <input type="text" placeholder="Data" class="dataInput" value="${condition.data == undefined ? "" : condition.data}">
           <input type="text" placeholder="Title" class="titleInput" value="${condition.title == undefined ? "" : condition.title}">
-          <input type="text" placeholder="Data" class="dataInput" value="${condition.data}">
           <button class="andButton">And</button>
         </div>
       `;
@@ -113,8 +123,8 @@ templateFileInput.addEventListener('change', (e) => {
         intersectionPair.className = "pairContainer";
         intersectionPair.style.display = "flex";
         intersectionPair.innerHTML = `
+          <input type="text" placeholder="Data" class="intersectionDataInput" value="${intersection.data == undefined ? "" : intersection.data}">
           <input type="text" placeholder="Title" class="intersectionTitleInput" value="${condition.title == undefined ? "" : condition.title}">
-          <input type="text" placeholder="Data" class="intersectionDataInput" value="${intersection.data}">
           <button class="andButton">And</button>
         `;
         inputPair.querySelector(".pairContainer").appendChild(intersectionPair);
@@ -122,9 +132,17 @@ templateFileInput.addEventListener('change', (e) => {
     }
   };
 
+  reader.onerror = function (event) {
+    // Handle FileReader errors
+    alert("Error reading the file.");
+    throw new Error("FileReader error");
+  };
+
   reader.readAsBinaryString(file);
 });
-  document.addEventListener("click", function (e) {
+
+
+ document.addEventListener("click", function (e) {
     if (e.target && e.target.classList.contains("andButton")) {
       e.preventDefault();
 
@@ -132,19 +150,28 @@ templateFileInput.addEventListener('change', (e) => {
       inputPair.className = "pairContainer";
       inputPair.style.display = "flex";
       inputPair.innerHTML = `
-                <input type="text" placeholder="Title" class="intersectionTitleInput">
                 <input type="text" placeholder="Data" class="intersectionDataInput">
+                <input type="text" placeholder="Title" class="intersectionTitleInput">
                 <button class="andButton">And</button>
             `;
       e.target.parentNode.after(inputPair);
       e.target.remove();
 
+      console.log("adding a new intersection");
+
+
+      let conditionIndex = Array.from(
+        inputPair.parentNode.parentNode.children
+      ).indexOf(inputPair.parentNode);
+
+      console.log("conditions idnexll: ", conditionIndex);
+
       // Add a new intersection to the last condition in the formData object
       conditionsObject.conditions[
-        conditionsObject.conditions.length - 1
+        conditionIndex
       ].intersections.push({
-        title: "",
         data: "",
+        title: "",
         intersections: [],
       });
     }
@@ -493,6 +520,11 @@ templateFileInput.addEventListener('change', (e) => {
     e.preventDefault();
 
     let formData = new FormData();
+    
+    if (conditionsObject.conditions.length == 0) {
+      conditionsObject.conditions.push({data: "", title: "", intersections: []});
+    }
+
     formData.append("template", JSON.stringify(conditionsObject));
 
     const res = await fetch("/api/search/download_template", {
