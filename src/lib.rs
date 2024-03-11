@@ -12,7 +12,6 @@ use calamine::{DataType, Reader};
 use chrono::NaiveDateTime;
 use itertools::Itertools;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use rust_xlsxwriter::RowNum;
 use search::{Search, SearchFiles};
 use serde::Deserialize;
 use tracing::{debug, info, trace, warn};
@@ -453,7 +452,7 @@ impl FilesMap {
         .map(|x| x.to_string())
         .collect_vec();
 
-        let mut filtered_rows = search_from_files(Arc::new(files), conditions.clone()).await;
+        let mut filtered_rows = search_from_files(Arc::new(files), &conditions).await;
         let header = filtered_rows.0.first().unwrap();
 
         let final_header = [intro_headers, header.clone()].concat();
@@ -468,7 +467,7 @@ impl FilesMap {
 
 async fn search_from_files(
     files: Arc<Vec<File>>,
-    conditions: Conditions,
+    conditions: &Conditions,
 ) -> (Vec<Vec<String>>, Vec<String>) {
     let mut filtered_rows: Vec<Vec<String>> = vec![];
     let mut filtered_files: Vec<File> = vec![];
