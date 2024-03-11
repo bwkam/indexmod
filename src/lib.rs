@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::{io::Cursor, path::Path};
 
 use crate::error::{Error, Result};
@@ -9,6 +11,8 @@ use axum::extract::Multipart;
 use calamine::{DataType, Reader};
 use chrono::NaiveDateTime;
 use itertools::Itertools;
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rust_xlsxwriter::RowNum;
 use search::{Search, SearchFiles};
 use serde::Deserialize;
 use tracing::{debug, info, trace, warn};
@@ -19,6 +23,10 @@ pub mod error;
 pub mod merge;
 pub mod routes;
 pub mod search;
+
+//                 date    files   series  count  name
+type RowNumInfo = (String, String, String, String, String);
+type FileRowNumInfo = Vec<RowNumInfo>;
 
 #[derive(Clone, Debug)]
 enum SortBy {
@@ -445,7 +453,7 @@ impl FilesMap {
         .map(|x| x.to_string())
         .collect_vec();
 
-        let mut filtered_rows = search_from_files(files, conditions.clone());
+        let mut filtered_rows = search_from_files(Arc::new(files), conditions.clone()).await;
         let header = filtered_rows.0.first().unwrap();
 
         let final_header = [intro_headers, header.clone()].concat();
@@ -458,47 +466,18 @@ impl FilesMap {
     }
 }
 
-fn search_from_files(files: Vec<File>, conditions: Conditions) -> (Vec<Vec<String>>, Vec<String>) {
+async fn search_from_files(
+    files: Arc<Vec<File>>,
+    conditions: Conditions,
+) -> (Vec<Vec<String>>, Vec<String>) {
     let mut filtered_rows: Vec<Vec<String>> = vec![];
     let mut filtered_files: Vec<File> = vec![];
     let mut headers: Vec<String> = vec![];
     let mut filtered_files_title_bars: Vec<(usize, Vec<String>)> = vec![];
     let mut acc_width = 0;
 
-    //                 date    files   series  count  name
-    type RowNumInfo = (String, String, String, String, String);
-    type FileRowNumInfo = Vec<RowNumInfo>;
-
-    // let total_rows = files.iter().flat_map(|file| file.rows.clone()).flatten().collect_vec().len();
-
     let mut total_rows_count = 0;
-
-    let file_row_num_infos: Vec<FileRowNumInfo> = files
-        .iter()
-        .enumerate()
-        .map(|(i, file)| {
-            let mut file_row_num_info: FileRowNumInfo = vec![];
-
-            file.rows.iter().enumerate().for_each(|(j, row)| {
-                file_row_num_info.push((
-                    file.last_modified.clone(),
-                    (i + 1).to_string(),
-                    total_rows_count.to_string(),
-                    format!("{}-{}", i + 1, j + 1),
-                    file.name.clone(),
-                ));
-
-                total_rows_count += 1;
-            });
-
-            file_row_num_info
-        })
-        .collect();
-
-    // calculate the num of files, series num, and count num
-
-    // dbg!(&numbers);
-    //
+    // let file_row_num_infos: Vec<FileRowNumInfo>;
 
     let mut total_rows_count = 0;
     let mut total_matched_files_count = 0;
@@ -588,7 +567,9 @@ fn search_from_files(files: Vec<File>, conditions: Conditions) -> (Vec<Vec<Strin
 
                 // we push the row if it's matched
                 if is_matched {
-                    let row_num_info = file_row_num_infos.get(i).unwrap().get(j).unwrap();
+                    let file_num_info = calc_file_row_num_infos(files.to_vec()).await;
+
+                    let row_num_info = file_num_info.get(i).unwrap().get(j).unwrap();
 
                     let mut new_row = vec![
                         row_num_info.0.clone(),
@@ -694,6 +675,36 @@ fn find_dup_indices(dup: &str, vec: &[impl AsRef<str>]) -> Vec<usize> {
         }
     }
     indices
+}
+
+async fn calc_file_row_num_infos(files: Vec<File>) -> Vec<FileRowNumInfo> {
+    let (send, recv) = tokio::sync::oneshot::channel();
+    rayon::spawn(move || {
+        let total_rows_count = AtomicUsize::new(0);
+        let file_row_num_infos: Vec<FileRowNumInfo> = files
+            .par_iter()
+            .enumerate()
+            .map(|(i, file)| {
+                let mut file_row_num_info: FileRowNumInfo = vec![];
+
+                file.rows.iter().enumerate().for_each(|(j, row)| {
+                    file_row_num_info.push((
+                        file.last_modified.clone(),
+                        (i + 1).to_string(),
+                        total_rows_count.fetch_add(1, Ordering::Relaxed).to_string(),
+                        format!("{}-{}", i + 1, j + 1),
+                        file.name.clone(),
+                    ));
+                });
+
+                file_row_num_info
+            })
+            .collect();
+
+        let _ = send.send(file_row_num_infos);
+    });
+
+    recv.await.expect("panic in rayon::spawn")
 }
 
 fn merge_title_bars(title_bars: Vec<(usize, Vec<String>)>) -> (Vec<String>, Vec<String>) {
