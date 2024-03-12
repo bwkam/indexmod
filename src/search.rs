@@ -3,6 +3,7 @@ use anyhow::Context;
 use itertools::Itertools;
 use rust_xlsxwriter::{Color, Format, Workbook};
 use serde::Deserialize;
+use tracing::info;
 
 use crate::error::Result;
 
@@ -40,6 +41,8 @@ impl SearchFiles {
             "File Name",
         ];
 
+        info!("Writing headers");
+
         for (i, h) in intro_headers.into_iter().enumerate() {
             worksheet
                 .write_string(0, i as u16, h)
@@ -57,6 +60,8 @@ impl SearchFiles {
                     .context("error writing header")?;
             }
         }
+
+        info!("Writing cells.");
 
         for (i, row) in self.rows.0.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
@@ -79,6 +84,7 @@ impl SearchFiles {
 
                 if let Some(d) = &data {
                     let segment_string = Self::split_thing(cell, d);
+                    // println!("segment string is: {:?}", &segment_string);
                     segment = segment_string
                         .iter()
                         .map(|s| {
@@ -109,13 +115,27 @@ impl SearchFiles {
             }
         }
 
+
+        // for (i, row) in self.rows.0.iter().enumerate() {
+        //     for (j, cell) in row.iter().enumerate() {
+        //         worksheet
+        //             .write_string(i as u32, j as u16, cell)
+        //             .context("error writing to new cell")?;
+        //     }
+        // }
+
+
         worksheet.autofit();
+
+        info!("saving to a buffer");
 
         let buf = workbook
             .save_to_buffer()
-            .context("Failed to save workbook to buffer")
+            .context("failed to save workbook to buffer")
             .unwrap()
             .to_vec();
+
+        info!("sending back response");
 
         Ok(buf)
     }

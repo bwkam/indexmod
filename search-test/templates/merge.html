@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- metadata -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Excel Merge</title>
+    <link rel="stylesheet" href="/_assets/css/merge.css" />
+    <!-- metadata -->
+
+    <!-- our general utils -->
+    <script src="/_assets/js/utils.js"></script>
+    <script src="/_assets/js/merge.js"></script>
+    <!-- our general utils -->
+
+    <!-- dependencies -->
+    <script src="/_assets/js/zip.min.js"></script>
+    <script src="/_assets/js/htmx.min.js.js"></script>
+    <script src="/_assets/js/_hyperscript.min.js.js"></script>
+    <!-- dependencies -->
+  </head>
+  <body>
+    <form id="main-form">
+      <!-- Main file -->
+      <label for="main-file">Main files</label>
+      <input type="file" id="main-file" name="main-file" accept=".xlsx, .xls" />
+
+      <ul id="main-file-list"></ul>
+      <button
+        type="button"
+        id="add-main-file"
+        _="on click call #main-file.click()"
+      >
+        Add main file
+      </button>
+      <!-- Main file -->
+
+      <h1 id="loading" style="display: none">Loading...</h1>
+
+      <!-- Excel files -->
+
+      <label for="excel-file"></label>
+      <input
+        type="file"
+        id="excel-file"
+        name="excel-file[]"
+        accept=".xlsx, .xls"
+        multiple
+        webkitdirectory
+        directory
+      />
+
+      <button
+        type="button"
+        id="add-excel"
+        _="on click call #excel-file.click()"
+      >
+        Add Excel
+      </button>
+      <!-- Excel files -->
+
+      <!-- Cutting rows -->
+      <label for="cutting-rows">Cutting Rows:</label>
+      <input type="number" id="cutting-rows" name="cutting-rows" />
+      <!-- Cutting rows -->
+
+      <!-- Zip input -->
+      <label for="zip-input"></label>
+      <input type="file" id="zip-input" name="zip-input" accept=".zip" />
+      <button type="button" id="add-zip" _="on click call #zip-input.click()">
+        Add Zip
+      </button>
+      <!-- Zip input -->
+
+      <!-- UL for the excel files -->
+      <ul id="excel-list"></ul>
+      <!-- UL for the excel files -->
+
+      <!-- Submit button -->
+      <button type="submit" id="submit-excel">Run</button>
+      <!-- Submit button -->
+
+      <!-- Sort by date -->
+      <input name="sort-by-date" type="checkbox" id="sortByDateCheckbox" />
+      <label for="sortByDateCheckbox">Sort by date</label>
+      <!-- Sort by date -->
+
+      <!-- Sort by file -->
+      <input name="sort-by-file" type="checkbox" id="sortByFileCheckbox" />
+      <label for="sortByFileCheckbox">Sort by file</label>
+      <!-- Sort by file -->
+    </form>
+  </body>
+</html>

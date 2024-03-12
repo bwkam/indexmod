@@ -1,12 +1,6 @@
-const conditionsObject = {
-  conditions: [],
-};
-
 document.addEventListener("DOMContentLoaded", () => {
   /////////// Elements ///////////
   const zipFileInput = document.getElementById("zip-input");
-  const folderFileInput = document.getElementById("folder-input");
-  const templateFileInput = document.getElementById("template-input");
 
   const excelList = document.getElementById("excel-list");
   const excelFileInput = document.getElementById("excel-file");
@@ -17,20 +11,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let loading = false;
   let mainFileName;
-  let formData = new FormData();
-
-
-function updateTotalCount() {
-  let total_count = document.getElementById("total-count");
-  total_count.textContent = `Total ${excelList.children.length} files`;
-}
+  const formData = new FormData();
 
   /////////// ______ ///////////
+  let conditionsObject = {
+    conditions: [],
+  };
+
   document.addEventListener("click", (e) => {
     console.log(conditionsObject);
   });
-
-console.log("using version 3.7.5");
 
   searchButton.addEventListener("click", function (e) {
     let inputPair = document.createElement("div");
@@ -39,8 +29,8 @@ console.log("using version 3.7.5");
     inputPair.innerHTML = `
             <button class="deleteButton">Delete</button>
             <div class="pairContainer" style="display: flex;">
-                <input type="text" placeholder="Data" class="dataInput">
                 <input type="text" placeholder="Title" class="titleInput">
+                <input type="text" placeholder="Data" class="dataInput">
                 <button class="andButton">And</button>
             </div>
         `;
@@ -48,103 +38,13 @@ console.log("using version 3.7.5");
 
     // Add a new condition to the formData object
     conditionsObject.conditions.push({
-      data: "",
       title: "",
+      data: "",
       intersections: [],
     });
   });
 
-
-templateFileInput.addEventListener('change', (e) => {
-  let file = e.target.files[0];
-  let reader = new FileReader();
-
-  reader.onload = function(e) {
-    var data = e.target.result;
-    var workbook = XLSX.read(data, {
-      type: "binary"
-    });
-
-    var first_sheet = workbook.Sheets[workbook.SheetNames[0]];
-
-    const raw_data = XLSX.utils.sheet_to_json(first_sheet, {header: 1});
-    console.log(raw_data);
-
-    // Validate the file format
-    const expectedHeaders = ['DATA', 'TITLE'];
-    const actualHeaders = raw_data[0].map(header => header.trim());
-
-    if (raw_data.length < 2 || !expectedHeaders.every(header => actualHeaders.includes(header))) {
-      // Throw an error if the file doesn't match the expected format
-      alert("Invalid file format. The template should have at least one row with 'Title' and 'Data' columns.");
-      throw new Error("Invalid file format");
-    }
-
-    for (let i = 1; i < raw_data.length; i++) {
-      let data = raw_data[i][0];
-      let title = raw_data[i][1];
-      let intersections = [];
-
-      for (let j = 2; j < raw_data[i].length; j += 2) {
-        let intersectionData = raw_data[i][j];
-        let intersectionTitle = raw_data[i][j + 1];
-
-        intersections.push({
-          data: intersectionData,
-          title: intersectionTitle,
-          intersections: []
-        });
-      }
-
-      conditionsObject.conditions.push({
-        title: title,
-        data: data,
-        intersections: intersections
-      });
-    }
-
-    console.log(conditionsObject);
-
-    // Build DOM input pairs based on the conditionsObject
-    for (let condition of conditionsObject.conditions) {
-      let inputPair = document.createElement("div");
-      inputPair.className = "inputPair";
-      inputPair.style.display = "flex";
-      inputPair.innerHTML = `
-        <button class="deleteButton">Delete</button>
-        <div class="pairContainer" style="display: flex;">
-          <input type="text" placeholder="Data" class="dataInput" value="${condition.data == undefined ? "" : condition.data}">
-          <input type="text" placeholder="Title" class="titleInput" value="${condition.title == undefined ? "" : condition.title}">
-          <button class="andButton">And</button>
-        </div>
-      `;
-      document.getElementById("search").appendChild(inputPair);
-
-      for (let intersection of condition.intersections) {
-        let intersectionPair = document.createElement("div");
-        intersectionPair.className = "pairContainer";
-        intersectionPair.style.display = "flex";
-        intersectionPair.innerHTML = `
-          <input type="text" placeholder="Data" class="intersectionDataInput" value="${intersection.data == undefined ? "" : intersection.data}">
-          <input type="text" placeholder="Title" class="intersectionTitleInput" value="${condition.title == undefined ? "" : condition.title}">
-          <button class="andButton">And</button>
-        `;
-        inputPair.querySelector(".pairContainer").appendChild(intersectionPair);
-      }
-    }
-  };
-
-  reader.onerror = function (event) {
-    // Handle FileReader errors
-    alert("Error reading the file.");
-    throw new Error("FileReader error");
-  };
-
-  reader.readAsBinaryString(file);
-});
-
-
- document.addEventListener("click", function (e) {
+  document.addEventListener("click", function (e) {
     if (e.target && e.target.classList.contains("andButton")) {
       e.preventDefault();
 
@@ -152,25 +52,19 @@ templateFileInput.addEventListener('change', (e) => {
       inputPair.className = "pairContainer";
       inputPair.style.display = "flex";
       inputPair.innerHTML = `
-                <input type="text" placeholder="Data" class="intersectionDataInput">
                 <input type="text" placeholder="Title" class="intersectionTitleInput">
+                <input type="text" placeholder="Data" class="intersectionDataInput">
                 <button class="andButton">And</button>
             `;
       e.target.parentNode.after(inputPair);
       e.target.remove();
 
-
-      let conditionIndex = Array.from(
-        inputPair.parentNode.parentNode.children
-      ).indexOf(inputPair.parentNode);
-
-
       // Add a new intersection to the last condition in the formData object
       conditionsObject.conditions[
-        conditionIndex
+        conditionsObject.conditions.length - 1
       ].intersections.push({
-        data: "",
         title: "",
+        data: "",
         intersections: [],
       });
     }
@@ -234,56 +128,6 @@ templateFileInput.addEventListener('change', (e) => {
         e.target.classList.contains("intersectionTitleInput") ? "title" : "data"
       ] = e.target.value;
     }
-  });
-
-  folderFileInput.addEventListener('change', async(e) => {
-        const files = e.target.files;
-
-        for (file of files) {
-            formData.append("excel-file[]", file);
-            const div = document.createElement("div");
-            const li = document.createElement("li");
-            const a = document.createElement("a");
-            const getFileButton = document.createElement("button");
-            getFileButton.textContent = "Get File";
-            getFileButton.addEventListener("click", (e) => {
-              e.preventDefault();
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = file.name;
-              a.click();
-            });
-
-            li.textContent = file.name;
-            excelList.appendChild(li);
-
-            const button = document.createElement("button");
-            button.textContent = "X";
-            button.addEventListener("click", () => {
-              let li = e.target.closest("li");
-              let nodes = Array.from(li.closest("ul").children);
-              let index = nodes.indexOf(li);
-
-              console.log("Index: " + index);
-
-              let values = formData.getAll("excel-file[]");
-              values.splice(index, 1);
-              formData.delete("excel-file[]");
-
-              values.forEach((value, _) => {
-                formData.append("excel-file[]", value);
-              });
-
-              li.remove();
-              console.log(formData);
-            });
-
-            div.appendChild(button);
-            div.appendChild(getFileButton);
-
-            li.appendChild(div);
-        }
   });
 
   zipFileInput.addEventListener("change", async (e) => {
@@ -366,7 +210,6 @@ templateFileInput.addEventListener('change', (e) => {
     });
 
     console.log(formData);
-    updateTotalCount();
 
     await zipReader.close();
   });
@@ -432,18 +275,12 @@ templateFileInput.addEventListener('change', (e) => {
 
       console.log(formData);
     }
-
-      updateTotalCount();
   });
 
 
   submitExcelButton.addEventListener("click", async (e) => {
     e.preventDefault();
     loading = true;
-
-    let mark = document.getElementById("mark");
-    mark.style.display = "flex";
-
     // setLoading(true);
 
 
@@ -470,7 +307,6 @@ templateFileInput.addEventListener('change', (e) => {
       body: formData,
     });
     if (!res.ok) {
-      mark.style.display = "none";
       const error = await res.json();
       alert(error.error);
       throw error;
@@ -493,7 +329,7 @@ templateFileInput.addEventListener('change', (e) => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `search${formatDate(
+    a.download = `merge${formatDate(
       date,
       "mmddyy"
     )}${time.trim()}.xlsx`;
@@ -504,18 +340,7 @@ templateFileInput.addEventListener('change', (e) => {
 
     console.log("Done!");
 
-
-    // cleanup
     loading = false;
-    mark.style.display = "none";
-    excelList.textContent = '';
-    formData = new FormData();
-
-  const searchList = document.getElementById("search");
-  while (searchList.firstChild) {
-    searchList.removeChild(searchList.firstChild);
-  }
-
     // setLoading(loading);
   });
 
@@ -523,11 +348,6 @@ templateFileInput.addEventListener('change', (e) => {
     e.preventDefault();
 
     let formData = new FormData();
-    
-    if (conditionsObject.conditions.length == 0) {
-      conditionsObject.conditions.push({data: "", title: "", intersections: []});
-    }
-
     formData.append("template", JSON.stringify(conditionsObject));
 
     const res = await fetch("/api/search/download_template", {
