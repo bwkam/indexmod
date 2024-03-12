@@ -30,7 +30,7 @@ function updateTotalCount() {
     console.log(conditionsObject);
   });
 
-console.log("using version 3.7.5");
+console.log("using version 3.7.6");
 
   searchButton.addEventListener("click", function (e) {
     let inputPair = document.createElement("div");
