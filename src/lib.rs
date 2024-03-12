@@ -442,7 +442,7 @@ impl FilesMap {
         let total_rows = filtered_rows.0.len();
         info!("Total rows: {:?}", total_rows);
 
-        info!("Finished searching, writing...");
+        info!("Starting to write.");
 
         Ok(SearchFiles {
             rows: filtered_rows,
@@ -581,7 +581,14 @@ async fn search_from_files(
         });
     }
 
+    info!("Searching finished.");
+    info!("Calculating the main title bar");
+
     let mut headers = merge_title_bars(&filtered_files_title_bars);
+    info!("Finished calculating the main title bar.");
+
+
+    info!("Adjusting the rows.");
 
     // adjust the rows because they are mispositioned at this point
     filtered_files.iter_mut().for_each(|file| {
@@ -625,6 +632,8 @@ async fn search_from_files(
             *cells = new_cells;
         });
     });
+
+    info!("Finished adjusting the rows.");
 
     let mut final_rows = filtered_files
         .into_iter()
