@@ -508,7 +508,11 @@ templateFileInput.addEventListener('change', (e) => {
     mark.style.display = "none";
     excelList.textContent = '';
     formData = new FormData();
-    
+
+  const searchList = document.getElementById("search");
+  while (searchList.firstChild) {
+    searchList.removeChild(searchList.firstChild);
+  }
 
     // setLoading(loading);
   });

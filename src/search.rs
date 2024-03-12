@@ -1,7 +1,6 @@
 use anyhow::Context;
 
 use itertools::Itertools;
-use regex::Regex;
 use rust_xlsxwriter::{Color, Format, Workbook};
 use serde::Deserialize;
 
@@ -32,21 +31,36 @@ impl SearchFiles {
         // write manually to the worksheet
         let headers = self.rows.0.remove(0);
 
+        // write intro headers
+        let intro_headers = [
+            "Date Modified",
+            "Number of Files",
+            "Series Number",
+            "Count Number",
+            "File Name",
+        ];
+
+        for (i, h) in intro_headers.into_iter().enumerate() {
+            worksheet
+                .write_string(0, i as u16, h)
+                .context("error writing header")?;
+        }
+
         for (i, h) in headers.iter().enumerate() {
             if self.rows.1.contains(h) {
                 worksheet
-                    .write_string_with_format(0, i as u16, h, &pink_bg)
+                    .write_string_with_format(0, (i + intro_headers.len()) as u16, h, &pink_bg)
                     .context("error writing header")?;
             } else {
                 worksheet
-                    .write_string(0, i as u16, h)
+                    .write_string(0, (i + intro_headers.len()) as u16, h)
                     .context("error writing header")?;
             }
         }
 
         for (i, row) in self.rows.0.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
-                let mut segment = vec![];
+                let segment: Vec<(&Format, &str)>;
                 if j <= 4 {
                     worksheet
                         .write_string((i + 1) as u32, j as u16, cell)
@@ -54,27 +68,33 @@ impl SearchFiles {
                     continue;
                 }
 
-                self.conditions.iter().for_each(|c| {
-                    let pat = format!(r"(.*)(?<data>{})(.*)", c.data);
-                    let re = Regex::new(pat.as_str()).unwrap();
+                let vec = &self
+                    .conditions
+                    .iter()
+                    .filter(|c| cell.contains(&c.data))
+                    .map(|c| &c.data)
+                    .collect_vec();
 
-                    if let Some(caps) = re.captures(cell) {
-                        segment = caps
-                            .iter()
-                            .skip(1)
-                            .filter(|c| !c.unwrap().is_empty())
-                            .map(|cap| {
-                                if cap.unwrap().as_str() == c.data {
-                                    (&red, c.data.as_str())
-                                } else {
-                                    (&default, cap.unwrap().as_str())
-                                }
-                            })
-                            .collect_vec();
-                    } else {
-                        segment = vec![(&default, cell)]
-                    }
-                });
+                let data = vec.get(0);
+
+                if let Some(d) = &data {
+                    let segment_string = Self::split_thing(cell, d);
+                    segment = segment_string
+                        .iter()
+                        .map(|s| {
+                            if s == **d {
+                                (&red, d.as_str())
+                            } else {
+                                (&default, *s)
+                            }
+                        })
+                        .collect()
+                } else {
+                    // TODO: redundant allocation? since `split_thing`
+                    // already return the original string if there are no
+                    // matches
+                    segment = vec![(&default, cell.as_str())]
+                }
 
                 if cell.trim().is_empty() {
                     worksheet
@@ -102,5 +122,23 @@ impl SearchFiles {
 
     pub fn write_to_vec(&self) -> Vec<Vec<String>> {
         self.rows.0.clone()
+    }
+
+    fn split_thing<'a>(haystack: &'a str, needle: &str) -> Vec<&'a str> {
+        let Some((l, r)) = haystack.split_once(needle) else {
+            return vec![haystack];
+        };
+        let m = &haystack[l.len()..][..needle.len()];
+
+        if l.is_empty() && r.is_empty() {
+            return vec![m];
+        }
+        if l.is_empty() {
+            return vec![m, r];
+        }
+        if r.is_empty() {
+            return vec![l, m];
+        }
+        vec![l, m, r]
     }
 }

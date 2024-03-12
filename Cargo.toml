@@ -3,7 +3,7 @@ authors = ["Beshoy Kamel <beshoykamel391@gmail.com>"]
 edition = "2021"
 # If you change the name here, you must also do it in flake.nix (and run `cargo generate-lockfile` afterwards)
 name = "excel-merge"
-version = "0.1.0"
+version = "3.7.2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,7 +17,6 @@ calamine = "0.22.1"
 chrono = "0.4.31"
 itertools = "0.11.0"
 rayon = "1.9.0"
-regex = "1.10.3"
 rust_xlsxwriter = { version = "0.54.0", features = ["zlib"] }
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.107"
@@ -34,9 +33,10 @@ utoipa = { version = "4.0.0", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "4.0.0", features = ["axum"] }
 uuid = { version = "1.4.1", features = ["v4"] }
 
+# uncomment these for maximum optimizations
 [profile.release]
 lto = true
-opt-level = 3
+# opt-level = 3
 codegen-units = 1
-incremental = false
-debug = false
+# incremental = false
+# debug = false

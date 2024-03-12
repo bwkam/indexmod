@@ -11,14 +11,17 @@ use axum::{
     Router,
 };
 
+use excel_merge::api::ApiDoc;
 use excel_merge::error::{Result, self};
 use excel_merge::routes;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tracing::info;
 
-static VERSION: &str = "3.6";
+static VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
 #[derive(askama::Template)]
 #[template(path = "merge.html")]
@@ -30,17 +33,16 @@ struct SearchTemplate {}
 #[tokio::main]
 async fn main() -> error::Result<()> {
     // log control
-    std::env::set_var("RUST_LOG", "trace");
+    std::env::set_var("RUST_LOG", "debug");
 
     // setup tracing
     tracing_subscriber::fmt::init();
 
-    info!("using version: {:?}", VERSION);
+    info!("using version: {:?}", VERSION.unwrap_or("unkown"));
 
     // serve static files
     let serve_dir = ServeDir::new("assets").not_found_service(ServeFile::new("assets/index.html"));
 
-    // FIXME: fix swagger ui
     let router = Router::new()
         // TODO: make a seperate router for api
         .route("/api/merge", post(routes::merge::merge_files))
@@ -53,7 +55,7 @@ async fn main() -> error::Result<()> {
         .route("/search", get(search))
         .nest_service("/_assets", serve_dir.clone())
         .fallback_service(serve_dir)
-        // .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
         .layer(
             CorsLayer::new()
                 .allow_origin("*".parse::<HeaderValue>().unwrap())

@@ -23,7 +23,7 @@ pub mod merge;
 pub mod routes;
 pub mod search;
 
-//                 date    files   series  count  name
+//                 date    files   series  count    name
 type RowNumInfo = (String, String, String, String, String);
 type FileRowNumInfo = Vec<RowNumInfo>;
 
@@ -221,7 +221,7 @@ impl FilesMap {
                         .collect();
 
                     files.push(File::new(
-                        other_name.clone(),
+                        other_name,
                         "unknown".to_string(),
                         rows,
                         is_main,
@@ -395,7 +395,7 @@ impl FilesMap {
                     info!("Finished. Pushing the file");
 
                     files.push(File::new(
-                        other_name.clone(),
+                        other_name,
                         "unknown".to_string(),
                         rows,
                         false,
@@ -440,23 +440,7 @@ impl FilesMap {
 
         info!("Merging files...");
 
-        // modify the headers
-        let intro_headers = [
-            "Date Modified",
-            "Number of Files",
-            "Series Number",
-            "Count Number",
-            "File Name",
-        ]
-        .iter()
-        .map(|x| x.to_string())
-        .collect_vec();
-
-        let mut filtered_rows = search_from_files(Arc::new(files), &conditions).await;
-        let header = filtered_rows.0.first().unwrap();
-
-        let final_header = [intro_headers, header.clone()].concat();
-        filtered_rows.0[0] = final_header;
+        let filtered_rows = search_from_files(Arc::new(files), &conditions).await;
 
         Ok(SearchFiles {
             rows: filtered_rows,
@@ -473,10 +457,6 @@ async fn search_from_files(
     let mut filtered_files: Vec<File> = vec![];
     let mut headers: Vec<String> = vec![];
     let mut filtered_files_title_bars: Vec<(usize, Vec<String>)> = vec![];
-    let mut acc_width = 0;
-
-    let mut total_rows_count = 0;
-    // let file_row_num_infos: Vec<FileRowNumInfo>;
 
     let mut total_rows_count = 0;
     let mut total_matched_files_count = 0;
@@ -492,7 +472,6 @@ async fn search_from_files(
             headers = current_file_rows.to_owned().first().unwrap().clone();
 
             for (j, row) in current_file_rows.iter().enumerate().collect_vec() {
-                acc_width += 1;
                 let filtered_row = row
                     .iter()
                     .filter(|x| x.contains(&search.data))
@@ -605,7 +584,6 @@ async fn search_from_files(
     }
 
     let mut headers = merge_title_bars(filtered_files_title_bars);
-    let mut file_id_to_print = Uuid::new_v4();
 
     // adjust the rows because they are mispositioned at this point
     filtered_files.iter_mut().for_each(|file| {
@@ -639,10 +617,6 @@ async fn search_from_files(
 
                 // if the header has a field, put that, otherwise insert an empty
                 if let Some(field) = cells_and_headers.get(header) {
-                    if **field == "2" {
-                        debug!("field {:?} belongs to the header {:?}", field, header);
-                        file_id_to_print = file.id;
-                    }
                     new_cells.push(field.to_string());
                 } else {
                     let empty = "".to_string();
@@ -686,7 +660,7 @@ async fn calc_file_row_num_infos(files: Vec<File>) -> Vec<FileRowNumInfo> {
             .map(|(i, file)| {
                 let mut file_row_num_info: FileRowNumInfo = vec![];
 
-                file.rows.iter().enumerate().for_each(|(j, row)| {
+                file.rows.iter().enumerate().for_each(|(j, _)| {
                     file_row_num_info.push((
                         file.last_modified.clone(),
                         (i + 1).to_string(),
@@ -733,9 +707,6 @@ fn merge_title_bars(title_bars: Vec<(usize, Vec<String>)>) -> (Vec<String>, Vec<
         .chain(title_bar_rows.clone())
         .unique()
         .collect_vec();
-
-    dbg!(&main_points_bar);
-    dbg!(&title_bar_rows);
 
     // TODO: make this a hashset from the beginning
     let intersections = main_points_bar
