@@ -349,6 +349,7 @@ impl FilesMap {
                 continue;
             }
 
+
             if content_type
                 == Some(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
@@ -357,6 +358,7 @@ impl FilesMap {
             {
                 let bytes = bytes.to_vec();
                 let reader = Cursor::new(bytes);
+                // TODO: we know the type, so use the static alternative from calamine
                 let mut workbook = calamine::open_workbook_auto_from_rs(reader)
                     .context("error opening workbook")?;
 

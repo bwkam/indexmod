@@ -65,7 +65,7 @@ impl SearchFiles {
 
         for (i, row) in self.rows.0.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
-                let mut segment: Vec<(&Format, &str)>;
+                let segment: Vec<(&Format, &str)>;
                 if j <= 4 {
                     worksheet
                         .write_string((i + 1) as u32, j as u16, cell)

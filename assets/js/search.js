@@ -30,7 +30,7 @@ function updateTotalCount() {
     console.log(conditionsObject);
   });
 
-console.log("using version 3.7.8");
+console.log("using version 3.8.1");
 
   searchButton.addEventListener("click", function (e) {
     let inputPair = document.createElement("div");
@@ -441,6 +441,13 @@ templateFileInput.addEventListener('change', (e) => {
 
   submitExcelButton.addEventListener("click", async (e) => {
     e.preventDefault();
+
+
+    if (conditionsObject.conditions.length == 0) {
+      alert("Please insert search values");
+      throw "empty conditions";
+    }
+
     loading = true;
 
     let mark = document.getElementById("mark");
@@ -466,7 +473,11 @@ templateFileInput.addEventListener('change', (e) => {
 
     console.log(formData);
 
+
+
+
     console.log("We're sending a request to the server.");
+
     const res = await fetch("/api/search", {
       method: "POST",
       body: formData,
@@ -513,6 +524,8 @@ templateFileInput.addEventListener('change', (e) => {
     excelList.textContent = '';
     formData = new FormData();
     updateTotalCount();
+
+    location.reload();
 
   const searchList = document.getElementById("search");
   while (searchList.firstChild) {
