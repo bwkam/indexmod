@@ -1,7 +1,7 @@
 function formatDate(date, format) {
   const map = {
-    mm: date.getMonth() + 1,
-    dd: date.getDate(),
+    mm: date.getMonth() <= 10 ? `0${date.getMonth() + 1}` : date.getMonth() + 1,
+    dd: date.getDate() <= 10 ? `0${date.getDate()}` : date.getDate(),
     yy: date.getFullYear().toString().slice(-2),
     yyy: date.getFullYear(),
   };
@@ -75,3 +75,5 @@ function fileListFrom(files) {
   for (const file of files) b.items.add(file);
   return b.files;
 }
+
+

@@ -4,7 +4,7 @@
     <!-- metadata -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Excel Merge</title>
+    <title>Excel Search</title>
     <link rel="stylesheet" href="/_assets/css/search.css" />
     <!-- metadata -->
 
@@ -17,8 +17,25 @@
     <script src="/_assets/js/zip.min.js"></script>
     <script src="/_assets/js/htmx.min.js.js"></script>
     <script src="/_assets/js/_hyperscript.min.js.js"></script>
+    <script src="/_assets/js/xlsx.js"></script>
     <!-- dependencies -->
   </head>
+
+  <style>
+      .loader {
+        border: 7px solid white;
+        border-top: 7px solid black; 
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 2s linear infinite;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+  </style>
   <body>
     <form>
       <h1 id="loading" style="display: none">Loading...</h1>
@@ -53,13 +70,27 @@
       <!-- Template download button -->
       <button type="button" id="download-template">Download template</button>
 
+      <!-- Upload template button-->
+      <label for="template-input"></label>
+      <input type="file" id="template-input" name="template-input" accept=".xlsx, .xls" />
+      <button type="button" id="add-template" _="on click call #template-input.click()">
+        Add template
+      </button>
+
+      <!-- Add Folder button-->
+      <label for="folder-input"></label>
+      <input type="file" id="folder-input" name="folder-input" webkitdirectory directory multiple />
+      <button type="button" id="add-folder" _="on click call #folder-input.click()">
+        Add folder
+      </button>
+
       <!-- UL for the excel files -->
       <ul id="excel-list"></ul>
+      <label id="total-count" style="font-weight: bold;"></label>
       <!-- UL for the excel files -->
 
       <!-- Search -->
       <button type="button" id="add-search">+</button>
-
       <div id="search" style="display: flex; flex-direction: column"></div>
       <!-- Search -->
 
@@ -67,5 +98,10 @@
       <button type="submit" id="submit-excel">Search</button>
       <!-- Submit button -->
     </form>
+    
+    <div id="mark" style="display: none; justify-content: center; align-items: center;"> 
+      <label style="margin-right: 2px;">Processing</label> 
+      <div class="loader"></div> 
+    </div>
   </body>
 </html>

@@ -2,3 +2,7 @@
 /result
 /result-lib
 .direnv
+*.zip
+*.svg
+perf.data
+perf.data.old

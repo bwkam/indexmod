@@ -1,5 +1,4 @@
-use axum::extract::Path;
-use axum::http::{header, HeaderMap, StatusCode};
+use anyhow::Context;
 use axum::response::IntoResponse;
 use axum::{
     extract::DefaultBodyLimit,
@@ -12,11 +11,17 @@ use axum::{
     Router,
 };
 
-use excel_merge::error::Result;
+use excel_merge::api::ApiDoc;
+use excel_merge::error::{Result, self};
 use excel_merge::routes;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
-use tracing_subscriber::EnvFilter;
+use tower_http::services::{ServeDir, ServeFile};
+use tracing::info;
+
+static VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
 #[derive(askama::Template)]
 #[template(path = "merge.html")]
@@ -26,14 +31,18 @@ struct MergeTemplate {}
 #[template(path = "search.html")]
 struct SearchTemplate {}
 #[tokio::main]
-async fn main() {
-    let trace_sub = tracing_subscriber::FmtSubscriber::builder()
-        .with_env_filter(EnvFilter::new("excel_merge=debug"))
-        .finish();
+async fn main() -> error::Result<()> {
+    // log control
+    std::env::set_var("RUST_LOG", "trace");
 
-    tracing::subscriber::set_global_default(trace_sub).unwrap();
+    // setup tracing
+    tracing_subscriber::fmt::init();
 
-    // FIXME: fix swagger ui
+    info!("using version: {:?}", VERSION.unwrap_or("unkown"));
+
+    // serve static files
+    let serve_dir = ServeDir::new("assets").not_found_service(ServeFile::new("assets/index.html"));
+
     let router = Router::new()
         // TODO: make a seperate router for api
         .route("/api/merge", post(routes::merge::merge_files))
@@ -44,8 +53,9 @@ async fn main() {
         )
         .route("/merge", get(merge))
         .route("/search", get(search))
-        .route("/_assets/*path", get(assets))
-        // .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
+        .nest_service("/_assets", serve_dir.clone())
+        .fallback_service(serve_dir)
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
         .layer(
             CorsLayer::new()
                 .allow_origin("*".parse::<HeaderValue>().unwrap())
@@ -56,12 +66,14 @@ async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
 
-    println!("->> LISTENING on localhost:8080");
+    info!("->> LISTENING on {:?}", addr);
 
     axum::Server::bind(&addr)
         .serve(router.into_make_service())
         .await
-        .unwrap();
+        .context("error launching server")?;
+
+    Ok(())
 }
 
 async fn merge() -> Result<impl IntoResponse> {
@@ -72,24 +84,4 @@ async fn merge() -> Result<impl IntoResponse> {
 async fn search() -> Result<impl IntoResponse> {
     let template = SearchTemplate {};
     Ok(template)
-}
-
-async fn assets(Path(path): Path<String>) -> impl IntoResponse {
-    let mut headers = HeaderMap::new();
-    let content = tokio::fs::read_to_string(format!("./assets/{}", path)).await;
-
-    match content {
-        Ok(content) => {
-            if path.ends_with(".css") {
-                headers.insert(header::CONTENT_TYPE, "text/css".parse().unwrap());
-            } else if path.ends_with(".js") {
-                headers.insert(header::CONTENT_TYPE, "text/javascript".parse().unwrap());
-            } else if path.ends_with(".svg") {
-                headers.insert(header::CONTENT_TYPE, "image/svg+xml".parse().unwrap());
-            }
-
-            (StatusCode::OK, headers, content)
-        }
-        Err(_) => (StatusCode::NOT_FOUND, headers, "".to_string()),
-    }
 }
