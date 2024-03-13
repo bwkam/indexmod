@@ -30,7 +30,7 @@ function updateTotalCount() {
     console.log(conditionsObject);
   });
 
-console.log("using version 3.7.6");
+console.log("using version 3.7.8");
 
   searchButton.addEventListener("click", function (e) {
     let inputPair = document.createElement("div");
@@ -284,6 +284,8 @@ templateFileInput.addEventListener('change', (e) => {
 
             li.appendChild(div);
         }
+
+        updateTotalCount();
   });
 
   zipFileInput.addEventListener("change", async (e) => {
@@ -510,6 +512,7 @@ templateFileInput.addEventListener('change', (e) => {
     mark.style.display = "none";
     excelList.textContent = '';
     formData = new FormData();
+    updateTotalCount();
 
   const searchList = document.getElementById("search");
   while (searchList.firstChild) {

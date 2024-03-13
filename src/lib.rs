@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 use std::{io::Cursor, path::Path};
 
 use crate::error::{Error, Result};
@@ -464,9 +465,11 @@ fn search_from_files(files: &[File], conditions: &Conditions) -> (Vec<Vec<String
     let info = calc_file_row_num_infos(files);
 
     for (i, file) in files.iter().enumerate() {
+        let instant = Instant::now();
         let mut is_matched;
         let mut new_file_rows: Vec<Vec<String>> = vec![];
         let mut points: usize = 0;
+
 
         for search in &conditions.conditions {
             let current_file_rows = &file.rows;
@@ -576,6 +579,8 @@ fn search_from_files(files: &[File], conditions: &Conditions) -> (Vec<Vec<String
             last_modified: file.last_modified.clone(),
             id: file.id,
         });
+
+        debug!("iteration duration: {:?}", instant.elapsed());
     }
 
     info!("Searching finished.");

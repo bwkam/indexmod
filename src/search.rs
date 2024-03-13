@@ -3,7 +3,7 @@ use anyhow::Context;
 use itertools::Itertools;
 use rust_xlsxwriter::{Color, Format, Workbook};
 use serde::Deserialize;
-use tracing::info;
+use tracing::{info, debug};
 
 use crate::error::Result;
 
@@ -65,7 +65,7 @@ impl SearchFiles {
 
         for (i, row) in self.rows.0.iter().enumerate() {
             for (j, cell) in row.iter().enumerate() {
-                let segment: Vec<(&Format, &str)>;
+                let mut segment: Vec<(&Format, &str)>;
                 if j <= 4 {
                     worksheet
                         .write_string((i + 1) as u32, j as u16, cell)
@@ -87,6 +87,7 @@ impl SearchFiles {
                     // println!("segment string is: {:?}", &segment_string);
                     segment = segment_string
                         .iter()
+                        .filter(|s| !s.is_empty())
                         .map(|s| {
                             if s == **d {
                                 (&red, d.as_str())
@@ -94,36 +95,25 @@ impl SearchFiles {
                                 (&default, *s)
                             }
                         })
-                        .collect()
+                        .collect();
+
+                    // write the rich string
+                    if worksheet
+                        .write_rich_string((i + 1) as u32, j as u16, segment.as_slice())
+                        .is_err() {
+                            debug!("error writing rich segment: {:?}", segment);
+                    }
                 } else {
-                    // TODO: redundant allocation? since `split_thing`
-                    // already return the original string if there are no
-                    // matches
-                    segment = vec![(&default, cell.as_str())]
-                }
-
-                if cell.trim().is_empty() {
-                    worksheet
+                    // empty or not, write it using `write_string` so we dodge any empty string
+                    // errors with rich strings, it's much easier
+                    if worksheet
                         .write_string((i + 1) as u32, j as u16, cell)
-                        .unwrap();
-                    continue;
+                        .is_err() {
+                            debug!("error writing normal cell: {:?}", cell);
+                    }
                 }
-
-                worksheet
-                    .write_rich_string((i + 1) as u32, j as u16, segment.as_slice())
-                    .unwrap();
             }
         }
-
-
-        // for (i, row) in self.rows.0.iter().enumerate() {
-        //     for (j, cell) in row.iter().enumerate() {
-        //         worksheet
-        //             .write_string(i as u32, j as u16, cell)
-        //             .context("error writing to new cell")?;
-        //     }
-        // }
-
 
         worksheet.autofit();
 

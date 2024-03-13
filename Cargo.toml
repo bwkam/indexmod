@@ -3,7 +3,7 @@ authors = ["Beshoy Kamel <beshoykamel391@gmail.com>"]
 edition = "2021"
 # If you change the name here, you must also do it in flake.nix (and run `cargo generate-lockfile` afterwards)
 name = "excel-merge"
-version = "3.7.6"
+version = "3.7.8"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -34,8 +34,8 @@ uuid = { version = "1.4.1", features = ["v4"] }
 
 [profile.release]
 lto = true
-debug = true
-# codegen-units = 1
+# debug = true
+codegen-units = 1
 
 [profile.release-with-debug]
 inherits="release"
