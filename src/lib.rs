@@ -437,7 +437,7 @@ impl FilesMap {
 
         info!("Merging files...");
 
-        let filtered_rows = search_from_files(&files, &conditions).await;
+        let filtered_rows = search_from_files(&files, &conditions);
 
         let total_rows = filtered_rows.0.len();
         info!("Total rows: {:?}", total_rows);
@@ -451,10 +451,7 @@ impl FilesMap {
     }
 }
 
-async fn search_from_files(
-    files: &[File],
-    conditions: &Conditions,
-) -> (Vec<Vec<String>>, Vec<String>) {
+fn search_from_files(files: &[File], conditions: &Conditions) -> (Vec<Vec<String>>, Vec<String>) {
     let mut filtered_files: Vec<File> = vec![];
     let mut headers: Vec<String> = vec![];
     let mut filtered_files_title_bars: Vec<(usize, Vec<String>)> = vec![];
@@ -464,6 +461,8 @@ async fn search_from_files(
 
     info!("Start searching.");
 
+    let info = calc_file_row_num_infos(files);
+
     for (i, file) in files.iter().enumerate() {
         let mut is_matched;
         let mut new_file_rows: Vec<Vec<String>> = vec![];
@@ -472,7 +471,7 @@ async fn search_from_files(
         for search in &conditions.conditions {
             let current_file_rows = &file.rows;
 
-            headers = current_file_rows.to_owned().first().unwrap().clone();
+            headers = current_file_rows.first().unwrap().clone();
 
             for (j, row) in current_file_rows.iter().enumerate() {
                 let filtered_row = row
@@ -545,9 +544,7 @@ async fn search_from_files(
 
                 // we push the row if it's matched
                 if is_matched {
-                    let file_num_info = calc_file_row_num_infos(files).await;
-
-                    let row_num_info = file_num_info.get(i).unwrap().get(j).unwrap();
+                    let row_num_info = info.get(i).unwrap().get(j).unwrap();
 
                     let mut new_row = vec![
                         row_num_info.0.clone(),
@@ -586,7 +583,6 @@ async fn search_from_files(
 
     let mut headers = merge_title_bars(&filtered_files_title_bars);
     info!("Finished calculating the main title bar.");
-
 
     info!("Adjusting the rows.");
 
@@ -657,7 +653,7 @@ fn find_dup_indices(dup: &str, vec: &[impl AsRef<str>]) -> Vec<usize> {
     indices
 }
 
-async fn calc_file_row_num_infos(files: &[File]) -> Vec<FileRowNumInfo> {
+fn calc_file_row_num_infos(files: &[File]) -> Vec<FileRowNumInfo> {
     let mut total_rows_count = 0;
     let file_row_num_infos: Vec<FileRowNumInfo> = files
         .iter()
