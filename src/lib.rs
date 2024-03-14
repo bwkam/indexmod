@@ -7,7 +7,7 @@ use crate::merge::MergeFiles;
 
 use anyhow::{anyhow, Context};
 use axum::extract::Multipart;
-use calamine::{DataType, Reader};
+use calamine::{Data, Reader};
 use chrono::NaiveDateTime;
 use itertools::Itertools;
 use search::{Search, SearchFiles};
@@ -211,7 +211,7 @@ impl FilesMap {
                         .map(|row| {
                             row.iter()
                                 .map(|cell| match cell {
-                                    DataType::String(s) => s.to_owned(),
+                                    Data::String(s) => s.to_owned(),
                                     _ => "empty".to_owned(),
                                 })
                                 .collect_vec()
@@ -349,7 +349,6 @@ impl FilesMap {
                 continue;
             }
 
-
             if content_type
                 == Some(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
@@ -382,10 +381,10 @@ impl FilesMap {
                         .map(|row| {
                             row.iter()
                                 .map(|cell| match cell {
-                                    DataType::String(s) => s.to_owned(),
-                                    DataType::Int(s) => s.to_string(),
-                                    DataType::Float(s) => s.to_string(),
-                                    DataType::Empty => " ".to_string(),
+                                    Data::String(s) => s.to_owned(),
+                                    Data::Int(s) => s.to_string(),
+                                    Data::Float(s) => s.to_string(),
+                                    Data::Empty => " ".to_string(),
                                     _ => "empty".to_owned(),
                                 })
                                 .collect_vec()
@@ -471,7 +470,6 @@ fn search_from_files(files: &[File], conditions: &Conditions) -> (Vec<Vec<String
         let mut is_matched;
         let mut new_file_rows: Vec<Vec<String>> = vec![];
         let mut points: usize = 0;
-
 
         for search in &conditions.conditions {
             let current_file_rows = &file.rows;

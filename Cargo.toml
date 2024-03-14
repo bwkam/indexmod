@@ -13,7 +13,7 @@ askama = { version = "0.12.1", features = ["with-axum"] }
 askama_axum = "0.3.0"
 axum = { version = "0.6.20", features = ["macros", "multipart", "tracing"] }
 axum-macros = "0.3.8"
-calamine = "0.22.1"
+calamine = { git = "https://github.com/tafia/calamine", branch = "master" }
 chrono = "0.4.31"
 itertools = "0.11.0"
 rust_xlsxwriter = { version = "0.54.0", features = ["zlib"] }
