@@ -711,6 +711,7 @@ fn merge_title_bars(title_bars: &[(usize, Vec<String>)]) -> (Vec<String>, Vec<St
     let main_points_idx = title_bars_clone.iter().map(|x| x.0).position_max().unwrap();
     let (_, main_points_bar) = title_bars_clone.remove(main_points_idx);
 
+    // TODO test
     let title_bar_rows = title_bars_clone
         .iter()
         .flat_map(|x| x.1.clone())
