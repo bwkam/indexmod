@@ -13,6 +13,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const submitExcelButton = document.getElementById("submit-excel")
   const searchButton = document.getElementById("add-search")
   const templateButton = document.getElementById("download-template")
+  const templateFilenameButton = document.getElementById(
+    "download-template-filename",
+  )
 
   let loading = false
   let formData = new FormData()
@@ -367,8 +370,6 @@ document.addEventListener("DOMContentLoaded", () => {
     while (searchList.firstChild) {
       searchList.removeChild(searchList.firstChild)
     }
-
-    // setLoading(loading);
   })
 
   templateButton.addEventListener("click", async (e) => {
@@ -453,5 +454,4 @@ document.addEventListener("DOMContentLoaded", () => {
 
     updateTotalCount()
   }
-
 })

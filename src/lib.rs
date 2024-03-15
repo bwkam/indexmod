@@ -7,7 +7,7 @@ use crate::merge::MergeFiles;
 
 use anyhow::{anyhow, Context};
 use axum::extract::Multipart;
-use calamine::{Data, Reader};
+use calamine::{Data, Range, Reader, Sheet, Xls, Xlsx};
 use chrono::NaiveDateTime;
 use itertools::Itertools;
 use search::{Search, SearchFiles};
@@ -353,13 +353,16 @@ impl FilesMap {
                 == Some(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
                 )
-                || content_type == Some("application/vnd.ms-excel".to_string())
             {
+            } else if content_type == Some("application/vnd.ms-excel".to_string()) {
                 let bytes = bytes.to_vec();
                 let reader = Cursor::new(bytes);
                 // TODO: we know the type, so use the static alternative from calamine
                 let mut workbook = calamine::open_workbook_auto_from_rs(reader)
                     .context("error opening workbook")?;
+
+                // let mut workbook: Xls<Cursor<Vec<u8>>> =
+                //     calamine::open_workbook_from_rs(reader).context("error opening workbook")?;
 
                 debug!("File name (excel): {:?}", &name);
 
@@ -375,21 +378,9 @@ impl FilesMap {
                 if let Some(range) = workbook.worksheet_range_at(0) {
                     let sheet = range.context("error getting range")?;
 
+                    let rows = sheet_to_rows(sheet);
+
                     info!("Parsing rows");
-                    let rows: Vec<Vec<String>> = sheet
-                        .rows()
-                        .map(|row| {
-                            row.iter()
-                                .map(|cell| match cell {
-                                    Data::String(s) => s.to_owned(),
-                                    Data::Int(s) => s.to_string(),
-                                    Data::Float(s) => s.to_string(),
-                                    Data::Empty => " ".to_string(),
-                                    _ => "empty".to_owned(),
-                                })
-                                .collect_vec()
-                        })
-                        .collect();
 
                     info!("Finished. Pushing the file");
 
@@ -646,6 +637,25 @@ fn search_from_files(files: &[File], conditions: &Conditions) -> (Vec<Vec<String
     final_rows.insert(0, headers.0);
 
     (final_rows, headers.1)
+}
+
+fn sheet_to_rows(sheet: Range<Data>) -> Vec<Vec<String>> {
+    let rows: Vec<Vec<String>> = sheet
+        .rows()
+        .map(|row| {
+            row.iter()
+                .map(|cell| match cell {
+                    Data::String(s) => s.to_owned(),
+                    Data::Int(s) => s.to_string(),
+                    Data::Float(s) => s.to_string(),
+                    Data::Empty => " ".to_string(),
+                    _ => "empty".to_owned(),
+                })
+                .collect_vec()
+        })
+        .collect();
+
+    rows
 }
 
 fn find_dup_indices(dup: &str, vec: &[impl AsRef<str>]) -> Vec<usize> {
