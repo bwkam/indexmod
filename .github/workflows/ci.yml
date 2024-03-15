@@ -19,6 +19,7 @@ jobs:
         with:
           command: check
   build:
+    name: "Run TODO to Issue"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
