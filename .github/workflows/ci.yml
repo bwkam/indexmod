@@ -1,6 +1,10 @@
-on: [push]
+name: "CI"
+on:
+  push:
+    branches:
+      - dev
+      - master
 
-name: CI
 jobs:
   check:
     name: Rust project
