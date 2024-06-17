@@ -1,4 +1,0 @@
-- ( ) use `worksheet_range_ref` to reduce memory usage
-- ( ) Implement traits for both merge/search
--- ( ) Execute/write methods
-- ( ) Use maud
