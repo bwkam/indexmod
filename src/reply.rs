@@ -24,7 +24,7 @@ pub struct ReplyFile {
     pub ext: String,
     pub size: u32,
     pub cutting_rows: u32,
-    pub merged_regions: Vec<(String, String, Dimensions)>,
+    pub merged_regions: Vec<Dimensions>,
     pub location_sheet_rows: Vec<Vec<String>>,
     pub merged_locations: Vec<MergedLocation>,
 }
@@ -43,7 +43,7 @@ impl ReplyFile {
         ext: String,
         size: u32,
         cutting_rows: u32,
-        merged_regions: Vec<(String, String, Dimensions)>,
+        merged_regions: Vec<Dimensions>,
         location_sheet_rows: Vec<Vec<String>>,
         merged_locations: Vec<MergedLocation>,
     ) -> Self {

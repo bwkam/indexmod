@@ -119,17 +119,23 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
                     let mut workbook: calamine::Xlsx<_> =
                         calamine::open_workbook_from_rs(reader).unwrap();
                     println!("File name (xlsx): {:?}", &name);
-                    let mut merged_regions: Vec<(String, String, Dimensions)> = vec![];
+                    let mut merged_regions: Vec<Dimensions> = vec![];
+                    if workbook.load_merged_regions().is_ok() {
+                        // FIXME: don't use to_owned
+                        merged_regions = workbook
+                            .merged_regions()
+                            .to_owned()
+                            .iter()
+                            .map(|region| region.2)
+                            .collect();
+                        trace!("Merged regions: {:?}", merged_regions);
+                    }
                     process_workbook(&mut workbook, &other_name, &mut files, &merged_regions);
                 }
                 "application/vnd.ms-excel" => {
                     let mut workbook: calamine::Xls<_> =
                         calamine::open_workbook_from_rs(reader).unwrap();
                     println!("File name (xls): {:?}", &name);
-                    // if workbook.load_merged_regions().is_ok() {
-                    //     let merged_regions = workbook.merged_regions();
-                    //     trace!("Merged regions: {:?}", merged_regions);
-                    // }
                     process_workbook(&mut workbook, &other_name, &mut files, &vec![]);
                 }
                 _ => {

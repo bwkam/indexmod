@@ -11,4 +11,4 @@ echo "Package [package] version number is: $CARGO_PACKAGE_VERSION"
 # remove old zips
 rm -rf *.zip
 # zip new project
-zip -r "search-app-$CARGO_PACKAGE_VERSION.zip" src assets templates Cargo.toml Cargo.lock tests
+zip -r "cell-reply-app-$CARGO_PACKAGE_VERSION.zip" src assets templates Cargo.toml Cargo.lock tests

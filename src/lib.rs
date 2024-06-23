@@ -387,10 +387,10 @@ impl FilesMap {
                         let mut workbook: calamine::Xlsx<_> =
                             calamine::open_workbook_from_rs(reader).unwrap();
                         println!("File name (xlsx): {:?}", &name);
-                        let mut merged_regions: Vec<(String, String, Dimensions)> = vec![];
+                        let mut merged_regions: Vec<Dimensions> = vec![];
                         if workbook.load_merged_regions().is_ok() {
                             // FIXME: don't use to_owned
-                            merged_regions = workbook.merged_regions().to_owned();
+                            merged_regions = workbook.merged_regions().to_owned().iter().map(|region| region.2).collect();
                             trace!("Merged regions: {:?}", merged_regions);
                         }
                         process_workbook(&mut workbook, &other_name, &mut files, &merged_regions);
@@ -399,10 +399,6 @@ impl FilesMap {
                         let mut workbook: calamine::Xls<_> =
                             calamine::open_workbook_from_rs(reader).unwrap();
                         println!("File name (xls): {:?}", &name);
-                        // if workbook.load_merged_regions().is_ok() {
-                        //     let merged_regions = workbook.merged_regions();
-                        //     trace!("Merged regions: {:?}", merged_regions);
-                        // }
                         process_workbook(&mut workbook, &other_name, &mut files, &vec![]);
                     }
                     _ => {
@@ -429,8 +425,8 @@ impl FilesMap {
             if !file.merged_regions.is_empty() {
                 file.merged_regions.iter().for_each(|merged_region| {
                     trace!("row vals: {:?}", file.rows);
-                    let row_data = file.rows[(merged_region.2.start.0) as usize]
-                        [(merged_region.2.start.1) as usize]
+                    let row_data = file.rows[(merged_region.start.0) as usize]
+                        [(merged_region.start.1) as usize]
                         .to_owned();
                     trace!("row_data: {:?}", row_data);
                     let mut idx = 0;
@@ -438,20 +434,20 @@ impl FilesMap {
                     // unmerge
                     if cell_reply {
                         file.rows.iter_mut().for_each(|row| {
-                            if idx >= merged_region.2.start.0 && idx <= merged_region.2.end.0 {
+                            if idx >= merged_region.start.0 && idx <= merged_region.end.0 {
                                 // why dereferencing causes an error?
                                 trace!(
                                     "the cell we're changing: {:?}",
-                                    row[(merged_region.2.start.0) as usize]
+                                    row[(merged_region.start.0) as usize]
                                 );
-                                row[(merged_region.2.start.1) as usize] = row_data.clone();
+                                row[(merged_region.start.1) as usize] = row_data.clone();
                             }
                             idx += 1;
                         });
                     }
 
                     file.merged_locations.push(MergedLocation {
-                        dimensions: merged_region.2,
+                        dimensions: *merged_region,
                         data: row_data,
                     });
                 });
@@ -888,7 +884,7 @@ fn process_workbook<R, RS>(
     // name: &str,
     other_name: &str,
     files: &mut ReplyFiles,
-    merged_regions: &Vec<(String, String, Dimensions)>,
+    merged_regions: &Vec<Dimensions>,
 ) where
     R: calamine::Reader<RS>,
     RS: Read + Seek,

@@ -75,7 +75,6 @@ document.addEventListener("DOMContentLoaded", () => {
     mark.style.display = "flex"
 
     formData.delete("last-mod[]")
-
     // append last mod
     formData
       .getAll("excel-file[]")
@@ -187,8 +186,9 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault()
 
     let templateFormData = formData
-    templateFormData.delete("last-mod[]")
 
+    templateFormData.delete("last-mod[]")
+    templateFormData.delete("size[]")
     // append last mod
     templateFormData
       .getAll("excel-file[]")
@@ -213,6 +213,7 @@ document.addEventListener("DOMContentLoaded", () => {
         templateFormData.append("size[]", size)
       })
 
+    templateFormData.delete("cut-row[]")
     // append cut row
     templateFormData.getAll("excel-file[]").forEach((_, idx) => {
       if (cutRows[idx] != undefined) {
@@ -394,13 +395,14 @@ document.addEventListener("DOMContentLoaded", () => {
       })
 
 
-      let cut_values = formData.getAll("cut-row[]")
-      cut_values.splice(index, 1)
+      cutRows.splice(index, 1)
       formData.delete("cut-row[]")
 
-      cut_values.forEach((value, _) => {
+      cutRows.forEach((value, _) => {
         formData.append("cut-row[]", value)
       })
+
+      console.log(cutRows)
 
 
       let size_values = formData.getAll("size[]")
