@@ -1,16 +1,16 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <!-- metadata -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Excel Search</title>
-    <link rel="stylesheet" href="/_assets/css/search.css" />
+    <link rel="stylesheet" href="/_assets/css/reply.css" />
     <!-- metadata -->
 
     <!-- our general utils -->
     <script src="/_assets/js/utils.js"></script>
-    <script src="/_assets/js/search.js"></script>
+    <script src="/_assets/js/reply.js"></script>
     <!-- our general utils -->
 
     <!-- dependencies -->
@@ -108,18 +108,18 @@
         Add folder
       </button>
 
+      <!-- Cell reply chechbox -->
+      <input type="checkbox" id="cell-reply" />
+      <label>Cell Reply</label>
+
       <!-- UL for the excel files -->
       <ul id="excel-list"></ul>
       <label id="total-count" style="font-weight: bold"></label>
       <!-- UL for the excel files -->
 
-      <!-- Search -->
-      <button type="button" id="add-search">+</button>
-      <div id="search" style="display: flex; flex-direction: column"></div>
-      <!-- Search -->
 
       <!-- Submit button -->
-      <button type="submit" id="submit-excel">Search</button>
+      <button type="submit" id="submit-excel">Process</button>
       <!-- Submit button -->
     </form>
 
@@ -132,3 +132,4 @@
     </div>
   </body>
 </html>
+

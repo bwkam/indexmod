@@ -30,7 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log(conditionsObject)
   })
 
-  console.log("using version 3.8.1")
+  console.log("using version 4.0.0")
 
   searchButton.addEventListener("click", function () {
     let inputPair = document.createElement("div")

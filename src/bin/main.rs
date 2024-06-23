@@ -12,14 +12,14 @@ use axum::{
 };
 
 use excel_merge::api::ApiDoc;
-use excel_merge::error::{Result, self};
-use excel_merge::routes;
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
+use excel_merge::error::{self, Result};
+use excel_merge::routes::{self};
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tracing::info;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 static VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
@@ -30,6 +30,11 @@ struct MergeTemplate {}
 #[derive(askama::Template)]
 #[template(path = "search.html")]
 struct SearchTemplate {}
+
+#[derive(askama::Template)]
+#[template(path = "reply.html")]
+struct CellReplyTemplate {}
+
 #[tokio::main]
 async fn main() -> error::Result<()> {
     // log control
@@ -47,12 +52,17 @@ async fn main() -> error::Result<()> {
         // TODO: make a seperate router for api
         .route("/api/merge", post(routes::merge::merge_files))
         .route("/api/search", post(routes::search::search_files))
+        .route("/api/reply", post(routes::reply::cell_reply_files))
+        .route("/api/reply-single", post(routes::reply::cell_reply_file))
+        .route("/api/reply-template", post(routes::reply::cell_reply_template))
         .route(
             "/api/search/download_template",
             post(routes::search::template_download::download),
         )
+
         .route("/merge", get(merge))
         .route("/search", get(search))
+        .route("/reply", get(reply))
         .nest_service("/_assets", serve_dir.clone())
         .fallback_service(serve_dir)
         .merge(SwaggerUi::new("/swagger-ui").url("/api-doc/openapi.json", ApiDoc::openapi()))
@@ -83,5 +93,10 @@ async fn merge() -> Result<impl IntoResponse> {
 
 async fn search() -> Result<impl IntoResponse> {
     let template = SearchTemplate {};
+    Ok(template)
+}
+
+async fn reply() -> Result<impl IntoResponse> {
+    let template = CellReplyTemplate {};
     Ok(template)
 }

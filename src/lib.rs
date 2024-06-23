@@ -1,15 +1,19 @@
 use std::collections::{HashMap, HashSet};
+use std::io::{BufReader, Read, Seek};
+use std::ops::Add;
 use std::time::Instant;
 use std::{io::Cursor, path::Path};
 
 use crate::error::{Error, Result};
 use crate::merge::MergeFiles;
+use crate::reply::{MergedLocation, ReplyFile};
 
 use anyhow::{anyhow, Context};
 use axum::extract::Multipart;
-use calamine::{Data, Range, Reader, Sheet, Xls, Xlsx};
+use calamine::{Data, Dimensions, Range, Reader, Sheet, Xls, Xlsx};
 use chrono::NaiveDateTime;
 use itertools::Itertools;
+use reply::ReplyFiles;
 use search::{Search, SearchFiles};
 use serde::Deserialize;
 use tracing::{debug, info, trace, warn};
@@ -17,8 +21,11 @@ use uuid::Uuid;
 
 pub mod api;
 pub mod error;
-pub mod merge;
 pub mod routes;
+
+pub mod merge;
+pub mod reply;
+
 pub mod search;
 
 //                 date    files   series  count    name
@@ -326,6 +333,141 @@ impl FilesMap {
         values_rows.insert(0, extra_headers);
 
         Ok(MergeFiles { rows: values_rows })
+    }
+
+    // TODO: block workboots with more than a sheet!
+    pub async fn reply_from_multipart(
+        mut multipart: Multipart,
+        cell_reply: bool,
+    ) -> Result<ReplyFiles> {
+        let mut files: ReplyFiles = ReplyFiles::new(vec![]);
+        let mut dates: Vec<String> = vec![];
+        let mut cutting_rows: Vec<u32> = vec![];
+        let mut sizes: Vec<u32> = vec![];
+
+        while let Some(field) = multipart.next_field().await.unwrap() {
+            let content_type = field.content_type().map(str::to_owned);
+
+            let name = field.name().unwrap_or("unknown").to_owned();
+            let other_name = field.file_name().unwrap_or("unknown").to_owned();
+            let bytes = field.bytes().await.unwrap();
+
+            if name == "last-mod[]" {
+                let date = String::from_utf8(bytes.to_vec()).unwrap();
+
+                dates.push(date);
+
+                continue;
+            }
+
+            if name == "cut-row[]" {
+                if let Ok(cut_row_str) = String::from_utf8(bytes.to_vec()) {
+                    if let Ok(cut_row) = cut_row_str.parse::<u32>() {
+                        cutting_rows.push(cut_row);
+                    }
+                }
+                trace!("Cutting-rows: {:?}", cutting_rows);
+            }
+
+            if name == "size[]" {
+                if let Ok(size_str) = String::from_utf8(bytes.to_vec()) {
+                    if let Ok(size) = size_str.parse::<u32>() {
+                        sizes.push(size);
+                    }
+                }
+                trace!("Size values: {:?}", sizes);
+            }
+
+            if let Some(content_type) = content_type {
+                let bytes = bytes.to_vec();
+                let reader = Cursor::new(bytes);
+
+                match content_type.as_str() {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
+                        let mut workbook: calamine::Xlsx<_> =
+                            calamine::open_workbook_from_rs(reader).unwrap();
+                        println!("File name (xlsx): {:?}", &name);
+                        let mut merged_regions: Vec<(String, String, Dimensions)> = vec![];
+                        if workbook.load_merged_regions().is_ok() {
+                            // FIXME: don't use to_owned
+                            merged_regions = workbook.merged_regions().to_owned();
+                            trace!("Merged regions: {:?}", merged_regions);
+                        }
+                        process_workbook(&mut workbook, &other_name, &mut files, &merged_regions);
+                    }
+                    "application/vnd.ms-excel" => {
+                        let mut workbook: calamine::Xls<_> =
+                            calamine::open_workbook_from_rs(reader).unwrap();
+                        println!("File name (xls): {:?}", &name);
+                        // if workbook.load_merged_regions().is_ok() {
+                        //     let merged_regions = workbook.merged_regions();
+                        //     trace!("Merged regions: {:?}", merged_regions);
+                        // }
+                        process_workbook(&mut workbook, &other_name, &mut files, &vec![]);
+                    }
+                    _ => {
+                        // Handle other content types or errors
+                    }
+                }
+            }
+        }
+
+        files.data.iter_mut().enumerate().for_each(|(i, file)| {
+            file.last_modified = dates[i].clone();
+            file.cutting_rows = cutting_rows[i].clone();
+            file.size = sizes[i].clone();
+        });
+
+        dates.clear();
+        cutting_rows.clear();
+        sizes.clear();
+
+        dbg!(&files.data);
+
+        // assumption: there's only one sheet
+        for file in &mut files.data {
+            if !file.merged_regions.is_empty() {
+                file.merged_regions.iter().for_each(|merged_region| {
+                    trace!("row vals: {:?}", file.rows);
+                    let row_data = file.rows[(merged_region.2.start.0) as usize]
+                        [(merged_region.2.start.1) as usize]
+                        .to_owned();
+                    trace!("row_data: {:?}", row_data);
+                    let mut idx = 0;
+
+                    // unmerge
+                    if cell_reply {
+                        file.rows.iter_mut().for_each(|row| {
+                            if idx >= merged_region.2.start.0 && idx <= merged_region.2.end.0 {
+                                // why dereferencing causes an error?
+                                trace!(
+                                    "the cell we're changing: {:?}",
+                                    row[(merged_region.2.start.0) as usize]
+                                );
+                                row[(merged_region.2.start.1) as usize] = row_data.clone();
+                            }
+                            idx += 1;
+                        });
+                    }
+
+                    file.merged_locations.push(MergedLocation {
+                        dimensions: merged_region.2,
+                        data: row_data,
+                    });
+                });
+            }
+        }
+
+        // cut rows
+        files.data.iter_mut().for_each(|file| {
+            // TODO: expensive (probably), to_vec()
+            let header_row = file.rows[0].clone();
+            file.rows = std::iter::once(header_row)
+                .chain(file.rows[(file.cutting_rows as usize + 1)..].to_vec())
+                .collect_vec();
+        });
+
+        Ok(files)
     }
 
     /// search and filter out the matched rows
@@ -668,6 +810,10 @@ fn find_dup_indices(dup: &str, vec: &[impl AsRef<str>]) -> Vec<usize> {
     indices
 }
 
+fn get_file_extension(filename: &str) -> Option<&str> {
+    filename.rfind('.').map(|index| &filename[index + 1..])
+}
+
 fn calc_file_row_num_infos(files: &[File]) -> Vec<FileRowNumInfo> {
     let mut total_rows_count = 0;
     let file_row_num_infos: Vec<FileRowNumInfo> = files
@@ -737,6 +883,52 @@ fn merge_title_bars(title_bars: &[(usize, Vec<String>)]) -> (Vec<String>, Vec<St
     (main_bar, intersections)
 }
 
+fn process_workbook<R, RS>(
+    workbook: &mut R,
+    // name: &str,
+    other_name: &str,
+    files: &mut ReplyFiles,
+    merged_regions: &Vec<(String, String, Dimensions)>,
+) where
+    R: calamine::Reader<RS>,
+    RS: Read + Seek,
+{
+    if let Ok(range) = workbook.worksheet_range_at(0).unwrap() {
+        let rows: Vec<Vec<String>> = range
+            .rows()
+            .map(|row| {
+                trace!("row: {:?}", row);
+                row.iter()
+                    .map(|cell| match cell {
+                        Data::String(s) => s.to_owned(),
+                        Data::Float(s) => s.to_string(),
+                        Data::Int(s) => s.to_string(),
+                        Data::Empty => "".to_string(),
+                        _ => "null".to_owned(),
+                    })
+                    .collect_vec()
+            })
+            .collect();
+
+        // dbg!("raw rows: {:?}", range.rows());
+        // dbg!("rows: {:?}", rows.clone());
+
+        let other_name_clone = other_name.to_owned();
+        let ext = get_file_extension(&other_name_clone).unwrap();
+
+        files.data.push(ReplyFile::new(
+            other_name.to_owned(),
+            "unknown".to_string(),
+            rows,
+            ext.to_string(),
+            3,
+            44,
+            merged_regions.to_owned(),
+            vec![],
+            vec![],
+        ));
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
