@@ -21,7 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.0.0")
+  console.log("using version 4.0.1")
 
   folderFileInput.addEventListener("change", async (e) => {
     const files = e.target.files
@@ -414,6 +414,7 @@ document.addEventListener("DOMContentLoaded", () => {
       })
 
       li.remove()
+      updateTotalCount()
     })
 
     div.appendChild(cutRow)
