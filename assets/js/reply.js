@@ -21,7 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.0.1")
+  console.log("using version 4.0.2")
 
   folderFileInput.addEventListener("change", async (e) => {
     const files = e.target.files
