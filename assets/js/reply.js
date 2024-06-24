@@ -261,6 +261,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     getFileButton.textContent = "Get File"
 
+    fileNameInput.id = "filename-input"
     fileNameInput.value = file.name.split(".")[0]
     fileExtLabel.innerText = file.name.split(".")[1]
 
@@ -364,7 +365,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = file.name
+      a.download = clickedFileEntry.name
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)

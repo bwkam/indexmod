@@ -54,12 +54,14 @@ async fn main() -> error::Result<()> {
         .route("/api/search", post(routes::search::search_files))
         .route("/api/reply", post(routes::reply::cell_reply_files))
         .route("/api/reply-single", post(routes::reply::cell_reply_file))
-        .route("/api/reply-template", post(routes::reply::cell_reply_template))
+        .route(
+            "/api/reply-template",
+            post(routes::reply::cell_reply_template),
+        )
         .route(
             "/api/search/download_template",
             post(routes::search::template_download::download),
         )
-
         .route("/merge", get(merge))
         .route("/search", get(search))
         .route("/reply", get(reply))

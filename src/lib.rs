@@ -386,6 +386,13 @@ impl FilesMap {
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
                         let mut workbook: calamine::Xlsx<_> =
                             calamine::open_workbook_from_rs(reader).unwrap();
+
+                        if workbook.worksheets().len() > 1 {
+                            warn!("Has more than one sheet! Will only parse the first sheet.");
+                            return Err(Error::SheetLimitExceeded);
+                        } else {
+                            debug!("Has only one sheet.")
+                        }
                         println!("File name (xlsx): {:?}", &name);
                         let mut merged_regions: Vec<Dimensions> = vec![];
                         if workbook.load_merged_regions().is_ok() {
@@ -403,6 +410,13 @@ impl FilesMap {
                     "application/vnd.ms-excel" => {
                         let mut workbook: calamine::Xls<_> =
                             calamine::open_workbook_from_rs(reader).unwrap();
+
+                        if workbook.worksheets().len() > 1 {
+                            warn!("Has more than one sheet! Will only parse the first sheet.");
+                            return Err(Error::SheetLimitExceeded);
+                        } else {
+                            debug!("Has only one sheet.")
+                        }
                         let mut merged_regions: Vec<Dimensions> = vec![];
                         println!("File name (xls): {:?}", &name);
                         if let Some(x) = workbook.worksheet_merge_cells_at(0) {
@@ -908,8 +922,10 @@ fn process_workbook<R, RS>(
                         Data::String(s) => s.to_owned(),
                         Data::Float(s) => s.to_string(),
                         Data::Int(s) => s.to_string(),
+                        Data::DateTime(s) => s.to_string(),
+                        Data::DateTimeIso(s) => s.to_string(),
                         Data::Empty => "".to_string(),
-                        _ => "null".to_owned(),
+                        _ => "unkown".to_owned(),
                     })
                     .collect_vec()
             })
