@@ -390,7 +390,12 @@ impl FilesMap {
                         let mut merged_regions: Vec<Dimensions> = vec![];
                         if workbook.load_merged_regions().is_ok() {
                             // FIXME: don't use to_owned
-                            merged_regions = workbook.merged_regions().to_owned().iter().map(|region| region.2).collect();
+                            merged_regions = workbook
+                                .merged_regions()
+                                .to_owned()
+                                .iter()
+                                .map(|region| region.2)
+                                .collect();
                             trace!("Merged regions: {:?}", merged_regions);
                         }
                         process_workbook(&mut workbook, &other_name, &mut files, &merged_regions);
@@ -398,8 +403,12 @@ impl FilesMap {
                     "application/vnd.ms-excel" => {
                         let mut workbook: calamine::Xls<_> =
                             calamine::open_workbook_from_rs(reader).unwrap();
+                        let mut merged_regions: Vec<Dimensions> = vec![];
                         println!("File name (xls): {:?}", &name);
-                        process_workbook(&mut workbook, &other_name, &mut files, &vec![]);
+                        if let Some(x) = workbook.worksheet_merge_cells_at(0) {
+                            merged_regions = x;
+                        }
+                        process_workbook(&mut workbook, &other_name, &mut files, &merged_regions);
                     }
                     _ => {
                         // Handle other content types or errors
