@@ -13,7 +13,7 @@ use axum::extract::Multipart;
 use calamine::{Data, Dimensions, Range, Reader, Sheet, Xls, Xlsx};
 use chrono::NaiveDateTime;
 use itertools::Itertools;
-use reply::ReplyFiles;
+use reply::{MergeType, ReplyFiles};
 use search::{Search, SearchFiles};
 use serde::Deserialize;
 use tracing::{debug, info, trace, warn};
@@ -362,11 +362,16 @@ impl FilesMap {
 
             if name == "cut-row[]" {
                 if let Ok(cut_row_str) = String::from_utf8(bytes.to_vec()) {
+                    if cut_row_str.is_empty() {
+                        cutting_rows.push(0);
+                    }
                     if let Ok(cut_row) = cut_row_str.parse::<u32>() {
                         cutting_rows.push(cut_row);
                     }
                 }
                 trace!("Cutting-rows: {:?}", cutting_rows);
+
+                continue;
             }
 
             if name == "size[]" {
@@ -376,6 +381,8 @@ impl FilesMap {
                     }
                 }
                 trace!("Size values: {:?}", sizes);
+
+                continue;
             }
 
             if let Some(content_type) = content_type {
@@ -427,7 +434,9 @@ impl FilesMap {
                     _ => {
                         // Handle other content types or errors
                     }
+                    
                 }
+                continue;
             }
         }
 
@@ -441,38 +450,91 @@ impl FilesMap {
         cutting_rows.clear();
         sizes.clear();
 
-        dbg!(&files.data);
+        // dbg!(&files.data);
+
+        files.data.iter().for_each(|v| {
+            trace!(
+                "Name: {:?}, rows: {:?}, date_modified: {:?}",
+                v.name,
+                v.rows.len(),
+                v.last_modified
+            );
+        });
+
+        files.data.iter().for_each(|file| {
+            let mut max_row: &Vec<String> = &vec![];
+            file.rows.iter().for_each(|row| {
+                if row.len() > max_row.len() {
+                    max_row = row;
+                }
+            });
+            info!("File {:?}, longest row is {:?}", file.name, max_row.len());
+            info!("{:?}", max_row);
+        });
 
         // assumption: there's only one sheet
         for file in &mut files.data {
             if !file.merged_regions.is_empty() {
+                // sort regions using rows from bottom to top
+                file.merged_regions
+                    .sort_by(|a, b| a.start.0.cmp(&b.start.0));
+
+                trace!("Merged regions: {:?}", file.merged_regions);
+
                 file.merged_regions.iter().for_each(|merged_region| {
-                    trace!("row vals: {:?}", file.rows);
-                    let row_data = file.rows[(merged_region.start.0) as usize]
+                    let merged_value = file.rows[(merged_region.start.0) as usize]
                         [(merged_region.start.1) as usize]
                         .to_owned();
-                    trace!("row_data: {:?}", row_data);
-                    let mut idx = 0;
+                    // if it's a merged column
+                    if merged_region.start.1 == merged_region.end.1 {
+                        // trace!("row vals: {:?}", file.rows);
+                        // trace!("row_data: {:?}", row_data);
+                        let mut idx = 0;
 
-                    // unmerge
-                    if cell_reply {
-                        file.rows.iter_mut().for_each(|row| {
-                            if idx >= merged_region.start.0 && idx <= merged_region.end.0 {
-                                // why dereferencing causes an error?
-                                trace!(
-                                    "the cell we're changing: {:?}",
-                                    row[(merged_region.start.0) as usize]
-                                );
-                                row[(merged_region.start.1) as usize] = row_data.clone();
-                            }
-                            idx += 1;
+                        // unmerge
+                        if cell_reply {
+                            file.rows.iter_mut().for_each(|row| {
+                                if idx >= merged_region.start.0 && idx <= merged_region.end.0 {
+                                    // why dereferencing causes an error?
+                                    // trace!(
+                                    //     "the cell we're changing: {:?}",
+                                    //     row[(merged_region.start.0) as usize]
+                                    // );
+                                    row[(merged_region.start.1) as usize] = merged_value.clone();
+                                }
+                                idx += 1;
+                            });
+                        }
+
+                        file.merged_locations.push(MergedLocation {
+                            dimensions: *merged_region,
+                            data: merged_value,
+                            variant: MergeType::Column,
+                        });
+                        // if it's a merged row
+                    } else if merged_region.start.0 == merged_region.end.0 {
+                        // trace!("row vals: {:?}", file.rows);
+                        // trace!("row_data: {:?}", row_data);
+                        let mut idx = 0;
+
+                        // unmerge
+                        if cell_reply {
+                            file.rows[(merged_region.start.0) as usize]
+                                .iter_mut()
+                                .for_each(|cell| {
+                                    if idx >= merged_region.start.1 && idx <= merged_region.end.1 {
+                                        *cell = merged_value.clone();
+                                    }
+                                    idx += 1;
+                                });
+                        }
+
+                        file.merged_locations.push(MergedLocation {
+                            dimensions: *merged_region,
+                            data: merged_value,
+                            variant: MergeType::Row,
                         });
                     }
-
-                    file.merged_locations.push(MergedLocation {
-                        dimensions: *merged_region,
-                        data: row_data,
-                    });
                 });
             }
         }
@@ -916,7 +978,7 @@ fn process_workbook<R, RS>(
         let rows: Vec<Vec<String>> = range
             .rows()
             .map(|row| {
-                trace!("row: {:?}", row);
+                // trace!("row: {:?}", row);
                 row.iter()
                     .map(|cell| match cell {
                         Data::String(s) => s.to_owned(),

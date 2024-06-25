@@ -128,7 +128,6 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
                             .iter()
                             .map(|region| region.2)
                             .collect();
-                        trace!("Merged regions: {:?}", merged_regions);
                     }
                     process_workbook(&mut workbook, &other_name, &mut files, &merged_regions);
                 }
@@ -155,7 +154,7 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
     cutting_rows.clear();
     sizes.clear();
 
-    dbg!(&files.data);
+    // dbg!(&files.data);
 
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();

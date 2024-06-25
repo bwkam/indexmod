@@ -21,7 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.0.3")
+  console.log("using version 4.0.4")
 
   folderFileInput.addEventListener("change", async (e) => {
     const files = e.target.files
@@ -355,7 +355,6 @@ document.addEventListener("DOMContentLoaded", () => {
       })
 
       if (!res.ok) {
-        mark.style.display = "none"
         const error = await res.json()
         alert(error.error)
         throw error
@@ -370,6 +369,9 @@ document.addEventListener("DOMContentLoaded", () => {
       a.click()
       document.body.removeChild(a)
       window.URL.revokeObjectURL(url)
+
+      loading = false
+      mark.style.display = "none"
 
       console.log("Done!")
     })
