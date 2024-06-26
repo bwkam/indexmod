@@ -181,23 +181,23 @@ impl ReplyFiles {
                                         location.data.as_str(),
                                         &Format::new(),
                                     )
-                                    .context("error writing merged region")?;
+                                    // .context("error writing merged region")?;
+                                    .unwrap();
                             }
                         }
 
                         MergeType::Column => {
-                            if location.dimensions.start.0 >= self.data[0].cutting_rows {
-                                worksheet
-                                    .merge_range(
-                                        location.dimensions.start.0,
-                                        (location.dimensions.start.1) as u16,
-                                        location.dimensions.end.0 - self.data[0].cutting_rows,
-                                        (location.dimensions.end.1) as u16,
-                                        location.data.as_str(),
-                                        &Format::new(),
-                                    )
-                                    .context("error writing merged region")?;
-                            }
+                            worksheet
+                                .merge_range(
+                                    location.dimensions.start.0,
+                                    (location.dimensions.start.1) as u16,
+                                    location.dimensions.end.0 - self.data[0].cutting_rows,
+                                    (location.dimensions.end.1) as u16,
+                                    location.data.as_str(),
+                                    &Format::new(),
+                                )
+                                // .context("error writing merged region")?;
+                                .unwrap();
                         }
                     }
                     // FIXME: why errors and their BTs don't log?
@@ -230,9 +230,10 @@ impl ReplyFiles {
         let header = &data[0];
 
         // write the top header
-        sheet
-            .write_row(0, 0, header)
-            .context("error writing header")?;
+        // sheet
+        //     .write_row(0, 0, header)
+        //     .context("error writing header")?;
+
         for location in merged_locations {
             sheet
                 .merge_range(

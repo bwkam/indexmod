@@ -16,7 +16,7 @@ use itertools::Itertools;
 use reply::{MergeType, ReplyFiles};
 use search::{Search, SearchFiles};
 use serde::Deserialize;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace, warn, Instrument};
 use uuid::Uuid;
 
 pub mod api;
@@ -434,7 +434,6 @@ impl FilesMap {
                     _ => {
                         // Handle other content types or errors
                     }
-                    
                 }
                 continue;
             }
@@ -542,10 +541,11 @@ impl FilesMap {
         // cut rows
         files.data.iter_mut().for_each(|file| {
             // TODO: expensive (probably), to_vec()
-            let header_row = file.rows[0].clone();
-            file.rows = std::iter::once(header_row)
-                .chain(file.rows[(file.cutting_rows as usize + 1)..].to_vec())
-                .collect_vec();
+            // file.rows = std::iter::once(header_row)
+            //     .chain(file.rows[(file.cutting_rows as usize + 1)..].to_vec())
+            //     .collect_vec();
+            file.rows = file.rows[(file.cutting_rows as usize)..].to_vec();
+            // file.merged_locations.retain(|dim| dim.dimensions.start.0 >= file.cutting_rows);
         });
 
         Ok(files)
