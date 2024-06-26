@@ -473,6 +473,9 @@ impl FilesMap {
 
         // assumption: there's only one sheet
         for file in &mut files.data {
+            // do the cut
+            let original_rows = file.rows.clone();
+            file.rows = file.rows[(file.cutting_rows as usize)..].to_vec();
             if !file.merged_regions.is_empty() {
                 // sort regions using rows from bottom to top
                 file.merged_regions
@@ -480,25 +483,48 @@ impl FilesMap {
 
                 trace!("Merged regions: {:?}", file.merged_regions);
 
-                file.merged_regions.iter().for_each(|merged_region| {
-                    let merged_value = file.rows[(merged_region.start.0) as usize]
+                for merged_region in &mut file.merged_regions {
+                    let merged_value = original_rows[(merged_region.start.0) as usize]
                         [(merged_region.start.1) as usize]
                         .to_owned();
+                    let original_merge_regions = merged_region.clone();
                     // if it's a merged column
                     if merged_region.start.1 == merged_region.end.1 {
                         // trace!("row vals: {:?}", file.rows);
                         // trace!("row_data: {:?}", row_data);
+                        trace!("col {:?}", merged_region);
+
                         let mut idx = 0;
+
+                        // if it's entirely cut, then just ignore it
+                        if merged_region.start.0 < file.cutting_rows
+                            && merged_region.end.0 < file.cutting_rows
+                        {
+                            trace!("merge region cut, ignored");
+                            continue;
+                        }
+
+                        trace!("cutting original merge regions");
+                        // cut
+                        merged_region.start.0 =
+                            merged_region.start.0.saturating_sub(file.cutting_rows);
+
+                        merged_region.end.0 = merged_region.end.0.saturating_sub(file.cutting_rows);
+
+                        trace!("new merge regions: {:?}", merged_region);
+
+                        // only one cell, so write that and skip this iteration
+                        if merged_region.start.0 == merged_region.end.0 {
+                            println!("single merge cell, writing normally");
+                            file.rows[(merged_region.start.0) as usize]
+                                [(merged_region.start.1) as usize] = merged_value;
+                            continue;
+                        }
 
                         // unmerge
                         if cell_reply {
                             file.rows.iter_mut().for_each(|row| {
                                 if idx >= merged_region.start.0 && idx <= merged_region.end.0 {
-                                    // why dereferencing causes an error?
-                                    // trace!(
-                                    //     "the cell we're changing: {:?}",
-                                    //     row[(merged_region.start.0) as usize]
-                                    // );
                                     row[(merged_region.start.1) as usize] = merged_value.clone();
                                 }
                                 idx += 1;
@@ -506,7 +532,7 @@ impl FilesMap {
                         }
 
                         file.merged_locations.push(MergedLocation {
-                            dimensions: *merged_region,
+                            dimensions: (*merged_region, original_merge_regions),
                             data: merged_value,
                             variant: MergeType::Column,
                         });
@@ -516,37 +542,52 @@ impl FilesMap {
                         // trace!("row_data: {:?}", row_data);
                         let mut idx = 0;
 
+
+                        // // check if it's cut, if yes then skip it
+                        if merged_region.start.0 <= file.cutting_rows {
+                            trace!("skipping: {:?}", merged_region);
+                            continue;
+                        }
+
+                        trace!("row {:?}", merged_region);
+
+                        merged_region.start.0 -= file.cutting_rows;
+                        merged_region.end.0 -= file.cutting_rows;
+
+
                         // unmerge
                         if cell_reply {
                             file.rows[(merged_region.start.0) as usize]
                                 .iter_mut()
                                 .for_each(|cell| {
+                                    trace!("cell: {:?}", cell);
                                     if idx >= merged_region.start.1 && idx <= merged_region.end.1 {
+                                        trace!(
+                                            "changing {:?} to {:?}",
+                                            *cell,
+                                            merged_value.clone()
+                                        );
                                         *cell = merged_value.clone();
+                                    } else {
+                                        trace!("not within range");
                                     }
                                     idx += 1;
                                 });
                         }
 
                         file.merged_locations.push(MergedLocation {
-                            dimensions: *merged_region,
+                            dimensions: (*merged_region, original_merge_regions),
                             data: merged_value,
                             variant: MergeType::Row,
                         });
                     }
-                });
+                }
+
+                // file.rows.iter().for_each(|row| {
+                //     println!("{:?}", row);
+                // });
             }
         }
-
-        // cut rows
-        files.data.iter_mut().for_each(|file| {
-            // TODO: expensive (probably), to_vec()
-            // file.rows = std::iter::once(header_row)
-            //     .chain(file.rows[(file.cutting_rows as usize + 1)..].to_vec())
-            //     .collect_vec();
-            file.rows = file.rows[(file.cutting_rows as usize)..].to_vec();
-            // file.merged_locations.retain(|dim| dim.dimensions.start.0 >= file.cutting_rows);
-        });
 
         Ok(files)
     }
@@ -1004,8 +1045,8 @@ fn process_workbook<R, RS>(
             "unknown".to_string(),
             rows,
             ext.to_string(),
-            3,
-            44,
+            0,
+            0,
             merged_regions.to_owned(),
             vec![],
             vec![],
