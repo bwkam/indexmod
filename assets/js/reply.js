@@ -21,7 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.0.5")
+  console.log("using version 4.0.6")
 
   folderFileInput.addEventListener("change", async (e) => {
     const files = e.target.files
@@ -268,6 +268,13 @@ document.addEventListener("DOMContentLoaded", () => {
     fileNameDiv.appendChild(checkbox)
     fileNameDiv.appendChild(fileNameInput)
     fileNameDiv.appendChild(fileExtLabel)
+
+    function resizeInput() {
+      this.style.width = this.value.length + "ch";
+    }
+
+    fileNameInput.addEventListener('input', resizeInput); // bind the "resizeInput" callback on "input" event
+    resizeInput.call(fileNameInput); // immediately call the function
 
     fileNameInput.addEventListener("change", (e) => {
       let li = e.target.closest("li")

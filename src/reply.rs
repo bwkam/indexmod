@@ -1,7 +1,7 @@
 use crate::error::Result;
 use anyhow::Context;
 use calamine::Dimensions;
-use std::io::{Cursor, Write};
+use std::{io::{Cursor, Write}, path::PathBuf};
 use tracing::{info, trace};
 
 use rust_xlsxwriter::{Format, Workbook};
@@ -27,7 +27,7 @@ pub struct MergedLocation {
 
 #[derive(Debug)]
 pub struct ReplyFile {
-    pub name: String,
+    pub name: PathBuf,
     pub last_modified: String,
     pub rows: Vec<Vec<String>>,
     pub ext: String,
@@ -58,7 +58,7 @@ impl ReplyFile {
     ) -> Self {
         ReplyFile {
             last_modified,
-            name,
+            name: name.into(),
             rows,
             ext,
             size,
@@ -82,6 +82,9 @@ impl ReplyFiles {
                 // write the actual file
                 let mut workbook = Workbook::new();
                 let worksheet = workbook.add_worksheet();
+                let worksheet = worksheet
+                    .set_name("Original")
+                    .context("error setting name of original sheet")?;
 
                 // write manually to the worksheet
                 // TODO: use the matrix function to be more concise
@@ -97,39 +100,16 @@ impl ReplyFiles {
                     Self::write_loc_sheet(&mut workbook, &file.rows, &file.merged_locations)?;
                 } else if !file.merged_regions.is_empty() {
                     for location in &file.merged_locations {
-                        match location.variant {
-                            MergeType::Row => {
-                                if location.dimensions.0.start.0 <= file.cutting_rows {
-                                    continue;
-                                } else {
-                                    worksheet
-                                        .merge_range(
-                                            location.dimensions.0.start.0,
-                                            (location.dimensions.0.start.1) as u16,
-                                            location.dimensions.0.end.0,
-                                            (location.dimensions.0.end.1) as u16,
-                                            location.data.as_str(),
-                                            &Format::new(),
-                                        )
-                                        .context("error writing merged region")?;
-                                }
-                            }
-
-                            MergeType::Column => {
-                                if location.dimensions.0.start.0 >= file.cutting_rows {
-                                    worksheet
-                                        .merge_range(
-                                            location.dimensions.0.start.0,
-                                            (location.dimensions.0.start.1) as u16,
-                                            location.dimensions.0.end.0 - file.cutting_rows,
-                                            (location.dimensions.0.end.1) as u16,
-                                            location.data.as_str(),
-                                            &Format::new(),
-                                        )
-                                        .context("error writing merged region")?;
-                                }
-                            }
-                        }
+                        worksheet
+                            .merge_range(
+                                location.dimensions.0.start.0,
+                                (location.dimensions.0.start.1) as u16,
+                                location.dimensions.0.end.0,
+                                (location.dimensions.0.end.1) as u16,
+                                location.data.as_str(),
+                                &Format::new(),
+                            )
+                            .context("error writing merged region")?;
                     }
                 }
 
@@ -138,7 +118,7 @@ impl ReplyFiles {
                     .context("Failed to save workbook to buffer")?
                     .to_vec();
 
-                zip.start_file(file.name.to_owned(), options)
+                zip.start_file(file.name.to_string_lossy(), options)
                     .context("error 0.starting file")?;
                 zip.write(buf.as_slice())
                     .context("error writing excel file to the zip")?;
@@ -149,6 +129,9 @@ impl ReplyFiles {
         } else {
             let mut workbook = Workbook::new();
             let worksheet = workbook.add_worksheet();
+            let worksheet = worksheet
+                .set_name("Original")
+                .context("error setting name of original sheet")?;
             let file = &self.data[0];
 
             // write manually to the worksheet
@@ -165,43 +148,17 @@ impl ReplyFiles {
                 Self::write_loc_sheet(&mut workbook, &file.rows, &file.merged_locations)?;
             } else if !file.merged_regions.is_empty() {
                 for location in file.merged_locations.iter() {
-                    match location.variant {
-                        MergeType::Row => {
-                            info!("unmerging a row region");
-                            worksheet
-                                .merge_range(
-                                    location.dimensions.0.start.0,
-                                    (location.dimensions.0.start.1) as u16,
-                                    location.dimensions.0.end.0,
-                                    (location.dimensions.0.end.1) as u16,
-                                    location.data.as_str(),
-                                    &Format::new(),
-                                )
-                                // .context("error writing merged region")?;
-                                .unwrap();
-                        }
-
-                        MergeType::Column => {
-                            info!("unmerging a col region");
-                            info!(
-                                "location row 0: {:?} and cut rows: {:?}",
-                                location.dimensions.0.start.0, file.cutting_rows
-                            );
-                            info!("BRO WHAT");
-                            dbg!(location);
-                            worksheet
-                                .merge_range(
-                                    location.dimensions.0.start.0,
-                                    (location.dimensions.0.start.1) as u16,
-                                    location.dimensions.0.end.0,
-                                    (location.dimensions.0.end.1) as u16,
-                                    location.data.as_str(),
-                                    &Format::new(),
-                                )
-                                // .context("error writing merged region")?;
-                                .unwrap();
-                        }
-                    }
+                    worksheet
+                        .merge_range(
+                            location.dimensions.0.start.0,
+                            (location.dimensions.0.start.1) as u16,
+                            location.dimensions.0.end.0,
+                            (location.dimensions.0.end.1) as u16,
+                            location.data.as_str(),
+                            &Format::new(),
+                        )
+                        // .context("error writing merged region")?;
+                        .unwrap();
                     // FIXME: why errors and their BTs don't log?
                     // .merge_range(
                     //     0,
@@ -229,6 +186,9 @@ impl ReplyFiles {
         merged_locations: &[MergedLocation],
     ) -> Result<()> {
         let sheet = workbook.add_worksheet();
+        let sheet = sheet
+            .set_name("Location")
+            .context("error setting name of loc sheet")?;
         let header = &data[0];
 
         // write the top header

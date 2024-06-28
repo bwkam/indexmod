@@ -179,7 +179,7 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
             let size = Size::from_bytes(file.size).to_string();
             vec![
                 i.to_string(),
-                file.name.to_string(),
+                file.name.file_stem().unwrap_or_default().to_string_lossy().to_string(),
                 file.ext.to_string(),
                 file.last_modified.to_string(),
                 size,
