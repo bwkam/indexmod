@@ -3,7 +3,7 @@ authors = ["Beshoy Kamel <beshoykamel391@gmail.com>"]
 edition = "2021"
 # If you change the name here, you must also do it in flake.nix (and run `cargo generate-lockfile` afterwards)
 name = "excel-merge"
-version = "4.0.6"
+version = "4.0.7"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -33,7 +33,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 utoipa = { version = "4.0.0", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "4.0.0", features = ["axum"] }
 uuid = { version = "1.4.1", features = ["v4"] }
-zip = { git = "https://github.com/zip-rs/zip2" }
+zip = { git = "https://github.com/zip-rs/zip2", features = ["deflate"] }
 
 [profile.release]
 lto = true

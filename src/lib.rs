@@ -342,6 +342,7 @@ impl FilesMap {
     ) -> Result<ReplyFiles> {
         let mut files: ReplyFiles = ReplyFiles::new(vec![]);
         let mut dates: Vec<String> = vec![];
+        let mut rename: Vec<bool> = vec![];
         let mut cutting_rows: Vec<u32> = vec![];
         let mut sizes: Vec<u32> = vec![];
 
@@ -370,6 +371,17 @@ impl FilesMap {
                     }
                 }
                 trace!("Cutting-rows: {:?}", cutting_rows);
+
+                continue;
+            }
+
+            if name == "rename[]" {
+                if let Ok(rename_str) = String::from_utf8(bytes.to_vec()) {
+                    if let Ok(rename_value) = rename_str.parse::<bool>() {
+                        rename.push(rename_value);
+                    }
+                }
+                trace!("Rename: {:?}", rename);
 
                 continue;
             }
@@ -443,33 +455,15 @@ impl FilesMap {
             file.last_modified = dates[i].clone();
             file.cutting_rows = cutting_rows[i].clone();
             file.size = sizes[i].clone();
+            file.rename = rename[i].clone();
         });
 
         dates.clear();
         cutting_rows.clear();
         sizes.clear();
+        rename.clear();
 
         // dbg!(&files.data);
-
-        files.data.iter().for_each(|v| {
-            trace!(
-                "Name: {:?}, rows: {:?}, date_modified: {:?}",
-                v.name,
-                v.rows.len(),
-                v.last_modified
-            );
-        });
-
-        files.data.iter().for_each(|file| {
-            let mut max_row: &Vec<String> = &vec![];
-            file.rows.iter().for_each(|row| {
-                if row.len() > max_row.len() {
-                    max_row = row;
-                }
-            });
-            info!("File {:?}, longest row is {:?}", file.name, max_row.len());
-            info!("{:?}", max_row);
-        });
 
         // assumption: there's only one sheet
         for file in &mut files.data {
@@ -542,7 +536,6 @@ impl FilesMap {
                         // trace!("row_data: {:?}", row_data);
                         let mut idx = 0;
 
-
                         // // check if it's cut, if yes then skip it
                         if merged_region.start.0 <= file.cutting_rows {
                             trace!("skipping: {:?}", merged_region);
@@ -553,7 +546,6 @@ impl FilesMap {
 
                         merged_region.start.0 -= file.cutting_rows;
                         merged_region.end.0 -= file.cutting_rows;
-
 
                         // unmerge
                         if cell_reply {
@@ -582,10 +574,6 @@ impl FilesMap {
                         });
                     }
                 }
-
-                // file.rows.iter().for_each(|row| {
-                //     println!("{:?}", row);
-                // });
             }
         }
 
@@ -1016,6 +1004,8 @@ fn process_workbook<R, RS>(
     RS: Read + Seek,
 {
     if let Ok(range) = workbook.worksheet_range_at(0).unwrap() {
+        let sheet_name = &workbook.worksheets()[0];
+
         let rows: Vec<Vec<String>> = range
             .rows()
             .map(|row| {
@@ -1034,9 +1024,6 @@ fn process_workbook<R, RS>(
             })
             .collect();
 
-        // dbg!("raw rows: {:?}", range.rows());
-        // dbg!("rows: {:?}", rows.clone());
-
         let other_name_clone = other_name.to_owned();
         let ext = get_file_extension(&other_name_clone).unwrap();
 
@@ -1050,6 +1037,8 @@ fn process_workbook<R, RS>(
             merged_regions.to_owned(),
             vec![],
             vec![],
+            false,
+            sheet_name.0.to_string(),
         ));
     }
 }

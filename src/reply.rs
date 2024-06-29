@@ -1,7 +1,10 @@
 use crate::error::Result;
 use anyhow::Context;
 use calamine::Dimensions;
-use std::{io::{Cursor, Write}, path::PathBuf};
+use std::{
+    io::{Cursor, Write},
+    path::PathBuf,
+};
 use tracing::{info, trace};
 
 use rust_xlsxwriter::{Format, Workbook};
@@ -36,6 +39,8 @@ pub struct ReplyFile {
     pub merged_regions: Vec<Dimensions>,
     pub location_sheet_rows: Vec<Vec<String>>,
     pub merged_locations: Vec<MergedLocation>,
+    pub rename: bool,
+    pub sheet_name: String,
 }
 
 impl ReplyFiles {
@@ -55,6 +60,8 @@ impl ReplyFile {
         merged_regions: Vec<Dimensions>,
         location_sheet_rows: Vec<Vec<String>>,
         merged_locations: Vec<MergedLocation>,
+        rename: bool,
+        sheet_name: String,
     ) -> Self {
         ReplyFile {
             last_modified,
@@ -66,6 +73,8 @@ impl ReplyFile {
             merged_regions,
             location_sheet_rows,
             merged_locations,
+            rename,
+            sheet_name,
         }
     }
 }
@@ -76,15 +85,23 @@ impl ReplyFiles {
         if !single {
             let mut buffer: Vec<u8> = Vec::new();
             let mut zip = ZipWriter::new(Cursor::new(&mut buffer));
-            let options = SimpleFileOptions::default();
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
             for file in &self.data {
                 // write the actual file
                 let mut workbook = Workbook::new();
-                let worksheet = workbook.add_worksheet();
-                let worksheet = worksheet
-                    .set_name("Original")
-                    .context("error setting name of original sheet")?;
+                let mut worksheet = workbook.add_worksheet();
+
+                if file.rename {
+                    worksheet = worksheet
+                        .set_name("Original")
+                        .context("error setting name of original sheet")?;
+                } else {
+                    worksheet = worksheet
+                        .set_name(&file.sheet_name)
+                        .context("error setting name of original sheet")?;
+                }
 
                 // write manually to the worksheet
                 // TODO: use the matrix function to be more concise
@@ -96,9 +113,9 @@ impl ReplyFiles {
                     }
                 }
 
-                if reply {
+                if reply && !file.merged_locations.is_empty() {
                     Self::write_loc_sheet(&mut workbook, &file.rows, &file.merged_locations)?;
-                } else if !file.merged_regions.is_empty() {
+                } else if !file.merged_locations.is_empty() {
                     for location in &file.merged_locations {
                         worksheet
                             .merge_range(
@@ -128,11 +145,18 @@ impl ReplyFiles {
             return Ok(buffer);
         } else {
             let mut workbook = Workbook::new();
-            let worksheet = workbook.add_worksheet();
-            let worksheet = worksheet
-                .set_name("Original")
-                .context("error setting name of original sheet")?;
+            let mut worksheet = workbook.add_worksheet();
             let file = &self.data[0];
+
+            if file.rename {
+                worksheet = worksheet
+                    .set_name("Original")
+                    .context("error setting name of original sheet")?;
+            } else {
+                worksheet = worksheet
+                    .set_name(&file.sheet_name)
+                    .context("error setting name of original sheet")?;
+            }
 
             // write manually to the worksheet
             for (i, row) in self.data[0].rows.iter().enumerate() {
@@ -144,9 +168,9 @@ impl ReplyFiles {
             }
 
             // write the location sheet
-            if reply {
+            if reply && !file.merged_locations.is_empty() {
                 Self::write_loc_sheet(&mut workbook, &file.rows, &file.merged_locations)?;
-            } else if !file.merged_regions.is_empty() {
+            } else if !file.merged_locations.is_empty() {
                 for location in file.merged_locations.iter() {
                     worksheet
                         .merge_range(

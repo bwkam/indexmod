@@ -7,10 +7,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const excelFileInput = document.getElementById("excel-file")
   const submitExcelButton = document.getElementById("submit-excel")
   const templateButton = document.getElementById("download-template")
+  const templateFileInput = document.getElementById("template-input")
   const cellReply = document.getElementById("cell-reply")
 
-  const cutRows = []
-  const sizes = []
+  let cutRows = []
+  let rename = []
 
   let loading = false
   let formData = new FormData()
@@ -21,7 +22,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.0.6")
+  console.log("using version 4.0.7")
+
 
   folderFileInput.addEventListener("change", async (e) => {
     const files = e.target.files
@@ -57,6 +59,58 @@ document.addEventListener("DOMContentLoaded", () => {
 
       createFileInExcelList(file)
     })
+  })
+
+  templateFileInput.addEventListener("change", (e) => {
+    console.log("processing template")
+    let file = e.target.files[0]
+    let reader = new FileReader()
+
+    reader.onload = function (e) {
+      var data = e.target.result 
+      var workbook = XLSX.read(data, {
+        type: "binary",
+      })
+
+      var template_sheet = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1}).filter(subArray => subArray.length > 0); 
+      template_sheet.shift()
+
+      // clean 
+      let files = formData.getAll("excel-file[]")
+      formData.delete("excel-file[]")
+      cutRows = []
+      console.log(template_sheet)
+
+      template_sheet.forEach((row, idx) => {
+        let ext; 
+        
+        // get the right ext
+        if (files[idx].type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+          ext = ".xlsx"
+        } else if (files[idx].type == "application/vnd.ms-excel") {
+          ext = ".xls"
+        }
+
+        console.log(row[1])
+        console.log(files[idx].name)
+
+        console.log("=========================================")
+
+        const newFile = new File([files[idx]], row[1] + ext, { type: files[idx].type })
+        formData.append("excel-file[]", newFile)
+
+        cutRows.push(row[5])
+      })
+
+    }
+
+    reader.onerror = function () {
+      // Handle FileReader errors
+      alert("Error reading the file.")
+      throw new Error("FileReader error")
+    }
+
+    reader.readAsBinaryString(file)
   })
 
   excelFileInput.addEventListener("change", async (e) => {
@@ -99,6 +153,9 @@ document.addEventListener("DOMContentLoaded", () => {
         formData.append("size[]", size)
       })
 
+    console.log("logging cut rows")
+    console.log(cutRows)
+
     // append cut row
     // TODO: handle deleting files for cut-rows too
     formData.getAll("excel-file[]").forEach((_, idx) => {
@@ -107,8 +164,13 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         formData.append("cut-row[]", 0)
       }
-    })
 
+      if (rename[idx] != undefined){
+        formData.append("rename[]", rename[idx])
+      } else {
+        formData.append("rename[]", false)
+      }
+    })
 
     console.log(formData)
 
@@ -125,8 +187,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   
-    console.log(checkboxValues)
-
     console.log(formData.getAll("excel-file[]"))
     console.log("We're sending a request to the server.")
 
@@ -174,12 +234,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // turn this off when debuggging
     updateTotalCount()
-    location.reload()
-
-    const searchList = document.getElementById("search")
-    while (searchList.firstChild) {
-      searchList.removeChild(searchList.firstChild)
-    }
+    // location.reload()
   })
 
   templateButton.addEventListener("click", async (e) => {
@@ -263,18 +318,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     fileNameInput.id = "filename-input"
     fileNameInput.value = file.name.split(".")[0]
+    fileNameInput.size = "80"
     fileExtLabel.innerText = file.name.split(".")[1]
 
     fileNameDiv.appendChild(checkbox)
     fileNameDiv.appendChild(fileNameInput)
     fileNameDiv.appendChild(fileExtLabel)
-
-    function resizeInput() {
-      this.style.width = this.value.length + "ch";
-    }
-
-    fileNameInput.addEventListener('input', resizeInput); // bind the "resizeInput" callback on "input" event
-    resizeInput.call(fileNameInput); // immediately call the function
 
     fileNameInput.addEventListener("change", (e) => {
       let li = e.target.closest("li")
@@ -283,6 +332,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const newFileName = e.target.value + file.name.slice(file.name.lastIndexOf("."));
       const newFile = new File([file], newFileName, { type: file.type });
+
+      if (newFileName != file.name) {
+        rename[index] = true
+      } else {
+        rename[index] = false
+      }
+
+      console.log(rename)
 
       let values = formData.getAll("excel-file[]")
       values[index]= newFile
@@ -351,6 +408,13 @@ document.addEventListener("DOMContentLoaded", () => {
         singleFormData.append("cut-row[]", cutRows[index])
       } else {
         singleFormData.append("cut-row[]", 0)
+      }
+
+      // append rename 
+      if (rename[index] != undefined) {
+        singleFormData.append("rename[]", rename[index])
+      } else {
+        singleFormData.append("rename[]", false)
       }
 
       // append size
