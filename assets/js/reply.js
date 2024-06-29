@@ -22,7 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.0.7")
+  console.log("using version 4.0.8")
 
 
   folderFileInput.addEventListener("change", async (e) => {
@@ -234,7 +234,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // turn this off when debuggging
     updateTotalCount()
-    // location.reload()
+    location.reload()
   })
 
   templateButton.addEventListener("click", async (e) => {
