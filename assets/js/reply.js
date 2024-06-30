@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let cutRows = []
   let rename = []
+  let checked = []
 
   let loading = false
   let formData = new FormData()
@@ -22,13 +23,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.0.8")
+  console.log("using version 4.0.9")
 
 
   folderFileInput.addEventListener("change", async (e) => {
     const files = e.target.files
     for (file of files) {
-      createFileInExcelList(file)
+      const newFile = new File([file], file.name.replace(/^.*[\\/]/, ''), {type: file.type})
+      createFileInExcelList(newFile)
     }
   })
 
@@ -65,6 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("processing template")
     let file = e.target.files[0]
     let reader = new FileReader()
+    let rowsLength;
 
     reader.onload = function (e) {
       var data = e.target.result 
@@ -78,8 +81,15 @@ document.addEventListener("DOMContentLoaded", () => {
       // clean 
       let files = formData.getAll("excel-file[]")
       formData.delete("excel-file[]")
+
       cutRows = []
+      checked = []
+
       console.log(template_sheet)
+
+      let cutRowsInputs = document.querySelectorAll("#cut-row")
+      let fileNameInputs = document.querySelectorAll("#filename-input")
+      let checkboxes = document.querySelectorAll('input[type="checkbox"]');
 
       template_sheet.forEach((row, idx) => {
         let ext; 
@@ -91,17 +101,19 @@ document.addEventListener("DOMContentLoaded", () => {
           ext = ".xls"
         }
 
-        console.log(row[1])
-        console.log(files[idx].name)
-
-        console.log("=========================================")
-
         const newFile = new File([files[idx]], row[1] + ext, { type: files[idx].type })
         formData.append("excel-file[]", newFile)
 
         cutRows.push(row[5])
-      })
+        checked.push(Boolean(row[6]))
 
+        // update the dom 
+        cutRowsInputs[idx].value =  row[5]
+        fileNameInputs[idx].value = row[1]
+
+        // skip the cell reply (find a better approach :P)
+        checkboxes[idx+1].checked = Boolean(row[6])
+      })
     }
 
     reader.onerror = function () {
@@ -157,7 +169,6 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log(cutRows)
 
     // append cut row
-    // TODO: handle deleting files for cut-rows too
     formData.getAll("excel-file[]").forEach((_, idx) => {
       if (cutRows[idx] != undefined) {
         formData.append("cut-row[]", cutRows[idx])
@@ -170,23 +181,16 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         formData.append("rename[]", false)
       }
+
+      if (checked[idx] != undefined){
+        formData.append("checked[]", checked[idx])
+      } else {
+        formData.append("checked[]", false)
+      }
     })
 
     console.log(formData)
 
-    const checkboxes = Array.from(excelList.querySelectorAll('input[type="checkbox"]'));
-    const checkboxValues = checkboxes.map(checkbox => checkbox.checked);
-    const files = formData.getAll("excel-file[]")
-    console.log(files)
-
-    // Filter the files based on the checkbox values
-    formData.delete("excel-file[]")
-    checkboxes.forEach((checkbox, index) => {
-      if (checkbox.checked) {
-        formData.append('excel-file[]', files[index]);
-      }
-    });
-  
     console.log(formData.getAll("excel-file[]"))
     console.log("We're sending a request to the server.")
 
@@ -244,6 +248,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     templateFormData.delete("last-mod[]")
     templateFormData.delete("size[]")
+
     // append last mod
     templateFormData
       .getAll("excel-file[]")
@@ -269,12 +274,23 @@ document.addEventListener("DOMContentLoaded", () => {
       })
 
     templateFormData.delete("cut-row[]")
+    templateFormData.delete("checked[]")
     // append cut row
     templateFormData.getAll("excel-file[]").forEach((_, idx) => {
       if (cutRows[idx] != undefined) {
         templateFormData.append("cut-row[]", cutRows[idx])
       } else {
         templateFormData.append("cut-row[]", 0)
+      }
+
+      if (checked[idx] != undefined){
+        formData.append("checked[]", checked[idx])
+        console.log("pushing")
+        console.log(checked)
+      } else {
+        formData.append("checked[]", false)
+        console.log("pushing")
+        console.log(checked)
       }
     })
 
@@ -315,6 +331,8 @@ document.addEventListener("DOMContentLoaded", () => {
     checkbox.type = "checkbox"
 
     getFileButton.textContent = "Get File"
+    
+    cutRow.id = "cut-row"
 
     fileNameInput.id = "filename-input"
     fileNameInput.value = file.name.split(".")[0]
@@ -324,6 +342,15 @@ document.addEventListener("DOMContentLoaded", () => {
     fileNameDiv.appendChild(checkbox)
     fileNameDiv.appendChild(fileNameInput)
     fileNameDiv.appendChild(fileExtLabel)
+
+    checkbox.addEventListener("click", e => {
+      let li = e.target.closest("li")
+      let nodes = Array.from(li.closest("ul").children)
+      let index = nodes.indexOf(li)
+
+      checked[index] = e.target.checked
+      console.log(checked)
+    })
 
     fileNameInput.addEventListener("change", (e) => {
       let li = e.target.closest("li")
@@ -342,7 +369,7 @@ document.addEventListener("DOMContentLoaded", () => {
       console.log(rename)
 
       let values = formData.getAll("excel-file[]")
-      values[index]= newFile
+      values[index] = newFile
       console.log(formData.getAll("excel-file[]"))
       formData.delete("excel-file[]")
 
@@ -478,6 +505,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       console.log(cutRows)
 
+      checked.splice(index, 1)
+      formData.delete("checked[]")
+
+      checked.forEach((value, _) => {
+        formData.append("checked[]", value)
+      })
+
+      console.log(checked)
 
       let size_values = formData.getAll("size[]")
       size_values.splice(index, 1)

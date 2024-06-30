@@ -41,6 +41,7 @@ pub struct ReplyFile {
     pub merged_locations: Vec<MergedLocation>,
     pub rename: bool,
     pub sheet_name: String,
+    pub checked: bool,
 }
 
 impl ReplyFiles {
@@ -62,6 +63,7 @@ impl ReplyFile {
         merged_locations: Vec<MergedLocation>,
         rename: bool,
         sheet_name: String,
+        checked: bool,
     ) -> Self {
         ReplyFile {
             last_modified,
@@ -75,6 +77,7 @@ impl ReplyFile {
             merged_locations,
             rename,
             sheet_name,
+            checked,
         }
     }
 }

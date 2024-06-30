@@ -1,18 +1,19 @@
+use crate::error::Error;
 use anyhow::Context;
 use std::io::Cursor;
 
 use crate::{error::Result, reply::ReplyFiles};
-use crate::{process_workbook, FilesMap};
+use crate::{get_file_extension, process_workbook, FilesMap};
 use axum::{
     extract::{Multipart, Query},
     response::IntoResponse,
 };
-use calamine::Dimensions;
+use calamine::{Data, Dimensions, Reader};
 use itertools::Itertools;
 use rust_xlsxwriter::Workbook;
 use serde::Deserialize;
 use size::Size;
-use tracing::{info, trace};
+use tracing::{debug, info, trace, warn};
 
 #[derive(Deserialize, Debug)]
 pub struct Params {
@@ -76,6 +77,7 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
     let mut dates: Vec<String> = vec![];
     let mut cutting_rows: Vec<u32> = vec![];
     let mut sizes: Vec<u32> = vec![];
+    let mut checked: Vec<bool> = vec![];
 
     while let Some(field) = multipart.next_field().await.unwrap() {
         let content_type = field.content_type().map(str::to_owned);
@@ -110,36 +112,55 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
             trace!("Cutting-rows: {:?}", cutting_rows);
         }
 
+        if name == "checked[]" {
+            if let Ok(checked_str) = String::from_utf8(bytes.to_vec()) {
+                if let Ok(checked_value) = checked_str.parse::<bool>() {
+                    checked.push(checked_value);
+                }
+            }
+            trace!("checked: {:?}", checked);
+
+            continue;
+        }
+
         if let Some(content_type) = content_type {
             let bytes = bytes.to_vec();
             let reader = Cursor::new(bytes);
 
-            match content_type.as_str() {
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
-                    let mut workbook: calamine::Xlsx<_> =
-                        calamine::open_workbook_from_rs(reader).unwrap();
-                    println!("File name (xlsx): {:?}", &name);
-                    let mut merged_regions: Vec<Dimensions> = vec![];
-                    if workbook.load_merged_regions().is_ok() {
-                        // FIXME: don't use to_owned
-                        merged_regions = workbook
-                            .merged_regions()
-                            .to_owned()
-                            .iter()
-                            .map(|region| region.2)
-                            .collect();
-                    }
-                    process_workbook(&mut workbook, &other_name, &mut files, &merged_regions);
+            if content_type.as_str()
+                == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                || content_type.as_str() == "application/vnd.ms-excel"
+            {
+                println!("File name: {:?}", &name);
+
+                let mut workbook = calamine::open_workbook_auto_from_rs(reader).unwrap();
+
+                if workbook.worksheets().len() > 1 {
+                    warn!("Has more than one sheet! Will only parse the first sheet.");
+                    return Err(Error::SheetLimitExceeded);
+                } else {
+                    debug!("Has only one sheet.")
                 }
-                "application/vnd.ms-excel" => {
-                    let mut workbook: calamine::Xls<_> =
-                        calamine::open_workbook_from_rs(reader).unwrap();
-                    println!("File name (xls): {:?}", &name);
-                    process_workbook(&mut workbook, &other_name, &mut files, &vec![]);
-                }
-                _ => {
-                    // Handle other content types or errors
-                }
+
+                let sheet_name = &workbook.worksheets()[0];
+
+                let other_name_clone = other_name.to_owned();
+                let ext = get_file_extension(&other_name_clone).unwrap();
+
+                files.data.push(crate::reply::ReplyFile::new(
+                    other_name.to_owned(),
+                    "unknown".to_string(),
+                    vec![],
+                    ext.to_string(),
+                    0,
+                    0,
+                    vec![],
+                    vec![],
+                    vec![],
+                    false,
+                    sheet_name.0.to_string(),
+                    false,
+                ));
             }
         }
     }
@@ -148,11 +169,13 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
         file.last_modified = dates[i].clone();
         file.cutting_rows = cutting_rows[i].clone();
         file.size = sizes[i].clone();
+        file.checked = checked[i].clone();
     });
 
     dates.clear();
     cutting_rows.clear();
     sizes.clear();
+    checked.clear();
 
     // dbg!(&files.data);
 
@@ -166,9 +189,10 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
         "Last Modified Date",
         "Size",
         "Cut row",
+        "Cell Reply",
     ]
     .iter_mut()
-    .map(|x| x.to_string())
+    .map(|x| Data::String(x.to_string()))
     .collect_vec();
 
     let rows = files
@@ -178,21 +202,42 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
         .map(|(i, file)| {
             let size = Size::from_bytes(file.size).to_string();
             vec![
-                i.to_string(),
-                file.name.file_stem().unwrap_or_default().to_string_lossy().to_string(),
-                file.ext.to_string(),
-                file.last_modified.to_string(),
-                size,
-                file.cutting_rows.to_string(),
+                Data::String(i.to_string()),
+                Data::String(
+                    file.name
+                        .file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                ),
+                Data::String(file.ext.to_string()),
+                Data::String(file.last_modified.to_string()),
+                Data::String(size),
+                Data::String(file.cutting_rows.to_string()),
+                Data::Bool(file.checked),
             ]
         })
         .collect_vec();
 
     let all_rows = std::iter::once(intro_headers).chain(rows).collect_vec();
 
-    worksheet
-        .write_row_matrix(0, 0, all_rows)
-        .context("error writing template rows")?;
+    for (i, row) in all_rows.iter().enumerate() {
+        for (j, cell) in row.iter().enumerate() {
+            match cell {
+                Data::Bool(x) => {
+                    worksheet
+                        .write_boolean(i as u32, j as u16, x.to_owned())
+                        .context("error writing template cell (bool)")?;
+                }
+
+                x => {
+                    worksheet
+                        .write_string(i as u32, j as u16, x.to_string())
+                        .context("error writing template cell")?;
+                }
+            }
+        }
+    }
 
     let buffer = workbook
         .save_to_buffer()

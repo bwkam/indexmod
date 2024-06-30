@@ -53,6 +53,7 @@
             pkgs.cargo-watch
             config.process-compose.cargo-doc-live.outputs.package
             pkgs.just
+            pkgs.cargo-flamegraph
           ];
         };
         packages.default = self'.packages.excel-merge;

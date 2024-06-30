@@ -345,6 +345,7 @@ impl FilesMap {
         let mut rename: Vec<bool> = vec![];
         let mut cutting_rows: Vec<u32> = vec![];
         let mut sizes: Vec<u32> = vec![];
+        let mut checked: Vec<bool> = vec![];
 
         while let Some(field) = multipart.next_field().await.unwrap() {
             let content_type = field.content_type().map(str::to_owned);
@@ -357,6 +358,17 @@ impl FilesMap {
                 let date = String::from_utf8(bytes.to_vec()).unwrap();
 
                 dates.push(date);
+
+                continue;
+            }
+
+            if name == "checked[]" {
+                if let Ok(checked_str) = String::from_utf8(bytes.to_vec()) {
+                    if let Ok(checked_value) = checked_str.parse::<bool>() {
+                        checked.push(checked_value);
+                    }
+                }
+                trace!("checked: {:?}", checked);
 
                 continue;
             }
@@ -456,14 +468,18 @@ impl FilesMap {
             file.cutting_rows = cutting_rows[i].clone();
             file.size = sizes[i].clone();
             file.rename = rename[i].clone();
+            file.checked = checked[i].clone();
         });
 
         dates.clear();
         cutting_rows.clear();
         sizes.clear();
         rename.clear();
+        checked.clear();
 
         // dbg!(&files.data);
+
+        files.data.retain(|file| file.checked == true);
 
         // assumption: there's only one sheet
         for file in &mut files.data {
@@ -1039,6 +1055,7 @@ fn process_workbook<R, RS>(
             vec![],
             false,
             sheet_name.0.to_string(),
+            false,
         ));
     }
 }
