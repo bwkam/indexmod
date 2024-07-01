@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.0.9")
+  console.log("using version 4.1.0")
 
 
   folderFileInput.addEventListener("change", async (e) => {
@@ -443,6 +443,8 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         singleFormData.append("rename[]", false)
       }
+
+      singleFormData.set("checked[]", true)
 
       // append size
       singleFormData.set("size[]", clickedFileEntry.size)

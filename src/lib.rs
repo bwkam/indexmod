@@ -636,7 +636,6 @@ impl FilesMap {
 
                 if workbook.worksheets().len() > 1 {
                     warn!("Has more than one sheet! Will only parse the first sheet.");
-                    // return Err(Error::SheetLimitExceeded);
                 } else {
                     debug!("Has only one sheet.")
                 }
