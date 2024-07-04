@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.1.0")
+  console.log("using version 4.1.1")
 
 
   folderFileInput.addEventListener("change", async (e) => {
