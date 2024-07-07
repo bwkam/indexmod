@@ -105,14 +105,18 @@ document.addEventListener("DOMContentLoaded", () => {
         formData.append("excel-file[]", newFile)
 
         cutRows.push(row[5])
-        checked.push(Boolean(row[6]))
+        checked.push(row[6])
 
         // update the dom 
         cutRowsInputs[idx].value =  row[5]
         fileNameInputs[idx].value = row[1]
 
         // skip the cell reply (find a better approach :P)
-        checkboxes[idx+1].checked = Boolean(row[6])
+        if (row[6] == "Y") {
+          checkboxes[idx+1].checked = true
+        } else if (row[6] == "" || row[6] == "N") {
+          checkboxes[idx+1].checked = false
+        }
       })
     }
 

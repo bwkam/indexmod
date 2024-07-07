@@ -114,8 +114,10 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
 
         if name == "checked[]" {
             if let Ok(checked_str) = String::from_utf8(bytes.to_vec()) {
-                if let Ok(checked_value) = checked_str.parse::<bool>() {
-                    checked.push(checked_value);
+                match checked_str.as_str() {
+                    "Y" => checked.push(true),
+                    "N" | "" => checked.push(false),
+                    _ => checked.push(false),
                 }
             }
             trace!("checked: {:?}", checked);
@@ -200,6 +202,11 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
         .iter()
         .enumerate()
         .map(|(i, file)| {
+            let checked_value = match file.checked {
+                true => "Y".to_string(),
+                false => "".to_string(),
+            };
+
             let size = Size::from_bytes(file.size).to_string();
             vec![
                 Data::String(i.to_string()),
@@ -214,7 +221,7 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
                 Data::String(file.last_modified.to_string()),
                 Data::String(size),
                 Data::String(file.cutting_rows.to_string()),
-                Data::Bool(file.checked),
+                Data::String(checked_value),
             ]
         })
         .collect_vec();
@@ -223,19 +230,9 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
 
     for (i, row) in all_rows.iter().enumerate() {
         for (j, cell) in row.iter().enumerate() {
-            match cell {
-                Data::Bool(x) => {
-                    worksheet
-                        .write_boolean(i as u32, j as u16, x.to_owned())
-                        .context("error writing template cell (bool)")?;
-                }
-
-                x => {
-                    worksheet
-                        .write_string(i as u32, j as u16, x.to_string())
-                        .context("error writing template cell")?;
-                }
-            }
+            worksheet
+                .write_string(i as u32, j as u16, cell.to_string())
+                .context("error writing template cell")?;
         }
     }
 

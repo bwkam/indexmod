@@ -221,6 +221,7 @@ impl FilesMap {
                                     Data::String(s) => s.to_owned(),
                                     Data::DateTime(s) => s.to_string(),
                                     Data::DateTimeIso(s) => s.to_string(),
+                                    Data::Empty => "".to_string(),
                                     _ => "empty".to_owned(),
                                 })
                                 .collect_vec()
