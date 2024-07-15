@@ -9,7 +9,6 @@ ul {
 #excel-list li {
   display: flex;
   align-items: center;
-  justify-content: space-between;
 }
 
 #excel-list li button {

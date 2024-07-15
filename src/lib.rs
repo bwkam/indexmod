@@ -90,9 +90,9 @@ impl FilesMap {
                 print!("Sorting by date...");
                 files.sort_by(|v1, v2| {
                     let dt1 =
-                        NaiveDateTime::parse_from_str(&v1.last_modified, "%Y %m %d %H%M").unwrap();
+                        NaiveDateTime::parse_from_str(&v1.last_modified, "%Y/%m/%d %H:%M").unwrap();
                     let dt2 =
-                        NaiveDateTime::parse_from_str(&v2.last_modified, "%Y %m %d %H%M").unwrap();
+                        NaiveDateTime::parse_from_str(&v2.last_modified, "%Y/%m/%d %H:%M").unwrap();
                     dt1.cmp(&dt2)
                 });
             }
@@ -139,6 +139,7 @@ impl FilesMap {
     pub async fn merge_from_multipart(mut multipart: Multipart) -> Result<MergeFiles> {
         let mut files: Vec<File> = vec![];
         let mut dates: Vec<String> = vec![];
+        let mut first_rows: Vec<String> = vec![];
 
         let mut cutting_rows: usize = 0;
         let mut sort_by_date: bool = false;
@@ -201,7 +202,9 @@ impl FilesMap {
                 || content_type == Some("application/vnd.ms-excel".to_string())
             {
                 let bytes = bytes.to_vec();
-                let is_main = false;
+
+                let is_main = name == "main-file";
+
                 let reader = Cursor::new(bytes);
                 let mut workbook = calamine::open_workbook_auto_from_rs(reader).unwrap();
 
@@ -219,14 +222,20 @@ impl FilesMap {
                             row.iter()
                                 .map(|cell| match cell {
                                     Data::String(s) => s.to_owned(),
+                                    Data::Float(s) => s.to_string(),
+                                    Data::Int(s) => s.to_string(),
                                     Data::DateTime(s) => s.to_string(),
                                     Data::DateTimeIso(s) => s.to_string(),
                                     Data::Empty => "".to_string(),
-                                    _ => "empty".to_owned(),
+                                    _ => "unknown".to_owned(),
                                 })
                                 .collect_vec()
                         })
                         .collect();
+
+                    if is_main {
+                        first_rows = rows[0].clone();
+                    }
 
                     files.push(File::new(
                         other_name,
@@ -322,7 +331,7 @@ impl FilesMap {
             .collect();
 
         // modify the headers
-        let extra_headers = [
+        let mut extra_headers = [
             "Date Modified",
             "Number of Files",
             "Series Number",
@@ -333,6 +342,7 @@ impl FilesMap {
         .map(|x| x.to_string())
         .collect::<Vec<String>>();
 
+        extra_headers.append(&mut first_rows);
         values_rows.insert(0, extra_headers);
 
         Ok(MergeFiles { rows: values_rows })
@@ -624,8 +634,8 @@ impl FilesMap {
                 == Some(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
                 )
+                || content_type == Some("application/vnd.ms-excel".to_string())
             {
-            } else if content_type == Some("application/vnd.ms-excel".to_string()) {
                 let bytes = bytes.to_vec();
                 let reader = Cursor::new(bytes);
                 // TODO: we know the type, so use the static alternative from calamine

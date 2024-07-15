@@ -39,7 +39,7 @@ function getDate(timeRaw, ms_dos) {
   const hours = String(date_obj.getHours()).padStart(2, "0")
   const minutes = String(date_obj.getMinutes()).padStart(2, "0")
 
-  const formattedDate = `${year} ${month} ${day} ${hours}${minutes}`
+  const formattedDate = `${year}/${month}/${day} ${hours}:${minutes}`
   return formattedDate
 }
 

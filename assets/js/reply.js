@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.1.1")
+  console.log("using version 4.1.4")
 
 
   folderFileInput.addEventListener("change", async (e) => {
@@ -127,6 +127,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     reader.readAsBinaryString(file)
+
+    submitExcelButton.click()
   })
 
   excelFileInput.addEventListener("change", async (e) => {
@@ -226,7 +228,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `search${formatDate(date, "mmddyy")}${time.trim()}.zip`
+    a.download = `reply${formatDate(date, "mmddyy")}${time.trim()}.zip`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
