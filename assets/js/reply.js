@@ -8,11 +8,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const submitExcelButton = document.getElementById("submit-excel")
   const templateButton = document.getElementById("download-template")
   const templateFileInput = document.getElementById("template-input")
-  const cellReply = document.getElementById("cell-reply")
 
   let cutRows = []
   let rename = []
   let checked = []
+  let reply = []
 
   let loading = false
   let formData = new FormData()
@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.1.5")
+  console.log("using version 4.1.6")
 
 
   folderFileInput.addEventListener("change", async (e) => {
@@ -64,79 +64,83 @@ document.addEventListener("DOMContentLoaded", () => {
   })
 
   templateFileInput.addEventListener("change", (e) => {
-    console.log("processing template")
-    let file = e.target.files[0]
-    let reader = new FileReader()
+    console.log("processing template");
+    let file = e.target.files[0];
+    let reader = new FileReader();
     let rowsLength;
+    let checkboxes = document.querySelectorAll("reply-checkbox");
 
     reader.onload = function (e) {
-      var data = e.target.result 
+      var data = e.target.result;
       var workbook = XLSX.read(data, {
         type: "binary",
-      })
+      });
 
-      var template_sheet = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {header: 1}).filter(subArray => subArray.length > 0); 
-      template_sheet.shift()
+      var template_sheet = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 }).filter((subArray) => subArray.length > 0);
+      const headers = template_sheet.shift();
 
-      // clean 
-      let files = formData.getAll("excel-file[]")
-      formData.delete("excel-file[]")
+      console.log(headers);
 
-      cutRows = []
-      checked = []
+      if (!headers.equals(["Series No", "File Name", "File Extension", "Last Modified Date", "Size", "Cut row", "Cell Reply"])) {
+        throw new Error("template format is incorrect");
+      }
 
-      console.log(template_sheet)
+      // Clean up
+      let files = formData.getAll("excel-file[]");
+      formData.delete("excel-file[]");
 
-      let cutRowsInputs = document.querySelectorAll("#cut-row")
-      let fileNameInputs = document.querySelectorAll("#filename-input")
-      let checkboxes = document.querySelectorAll('input[type="checkbox"]');
+      cutRows = [];
+      reply = [];
+
+      console.log(template_sheet);
+
+      let cutRowsInputs = document.querySelectorAll("#cut-row");
+      let fileNameInputs = document.querySelectorAll("#filename-input");
 
       template_sheet.forEach((row, idx) => {
-        let ext; 
-        
-        // get the right ext
+        let ext;
+
+        // Get the right extension
         if (files[idx].type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
-          ext = ".xlsx"
+          ext = ".xlsx";
         } else if (files[idx].type == "application/vnd.ms-excel") {
-          ext = ".xls"
+          ext = ".xls";
         }
 
-        const newFile = new File([files[idx]], row[1] + ext, { type: files[idx].type })
-        formData.append("excel-file[]", newFile)
+        const newFile = new File([files[idx]], row[1] + ext, { type: files[idx].type });
+        formData.append("excel-file[]", newFile);
 
-        cutRows.push(row[5])
+        cutRows.push(row[5]);
 
-        // update the dom 
-        cutRowsInputs[idx].value =  row[5]
-        fileNameInputs[idx].value = row[1]
+        // Update the DOM
+        cutRowsInputs[idx].value = row[5];
+        fileNameInputs[idx].value = row[1];
 
-        // skip the cell reply (find a better approach :P)
-        console.log(row[6])
+        // Skip the cell reply (find a better approach :P)
+        console.log(row[6]);
         if (row[6] == "Y") {
-          checkboxes[idx+1].checked = true
-          checked.push(true)
+          checkboxes[idx].checked = true;
+          reply.push(true);
         } else if (row[6] == "" || row[6] == "N" || row[6] == undefined) {
-          checkboxes[idx+1].checked = false
-          checked.push(false)
+          checkboxes[idx].checked = false;
+          reply.push(false);
         }
-      })
-    }
-
+      });
+    };
 
     reader.onerror = function () {
       // Handle FileReader errors
-      alert("Error reading the file.")
-      throw new Error("FileReader error")
-    }
+      alert("error reading the file.");
+      throw new Error("filereader error");
+    };
 
-    reader.readAsArrayBuffer(file)
+    reader.readAsArrayBuffer(file);
 
     reader.onloadend = (e) => {
-      console.log(checked)
-      submitExcelButton.click()
-    }
-
-  })
+      console.log(checked);
+      submitExcelButton.click();
+    };
+  });
 
   excelFileInput.addEventListener("change", async (e) => {
     const files = e.target.files
@@ -181,10 +185,6 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("logging cut rows")
     console.log(cutRows)
 
-    console.log("")
-    console.log(checked)
-
-
     // append cut row
     formData.getAll("excel-file[]").forEach((_, idx) => {
       if (cutRows[idx] != undefined) {
@@ -206,17 +206,19 @@ document.addEventListener("DOMContentLoaded", () => {
         formData.append("checked[]", false)
       }
 
+      if (reply[idx] != undefined){
+        formData.append("reply[]", reply[idx])
+      } else {
+        console.log("pushing false")
+        formData.append("reply[]", false)
+      }
     })
-
-    console.log("logging checked")
-    console.log(checked)
-
     console.log(formData)
 
     console.log(formData.getAll("excel-file[]"))
     console.log("We're sending a request to the server.")
 
-    const res = await fetch(`/api/reply?reply=${cellReply.checked == true ? "true" : "false"}`, {
+    const res = await fetch("/api/reply", {
       method: "POST",
       body: formData,
     })
@@ -260,7 +262,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // turn this off when debuggging
     updateTotalCount()
-    location.reload()
+    // location.reload()
   })
 
   templateButton.addEventListener("click", async (e) => {
@@ -351,7 +353,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const fileExtLabel = document.createElement("label");
     const fileNameDiv = document.createElement("div");
     const checkbox = document.createElement("input");
+    const replyCheckbox = document.createElement("input");
+
     checkbox.type = "checkbox"
+    replyCheckbox.type = "checkbox"
+    replyCheckbox.classList.add("reply-checkbox")
 
     getFileButton.textContent = "Get File"
     
@@ -365,6 +371,7 @@ document.addEventListener("DOMContentLoaded", () => {
     fileNameDiv.appendChild(checkbox)
     fileNameDiv.appendChild(fileNameInput)
     fileNameDiv.appendChild(fileExtLabel)
+    fileNameDiv.appendChild(replyCheckbox)
 
     checkbox.addEventListener("click", e => {
       let li = e.target.closest("li")
@@ -373,6 +380,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
       checked[index] = e.target.checked
       console.log(checked)
+    })
+
+    replyCheckbox.addEventListener("click", e => {
+      let li = e.target.closest("li")
+      let nodes = Array.from(li.closest("ul").children)
+      let index = nodes.indexOf(li)
+
+      reply[index] = e.target.checked
+      console.log(reply)
     })
 
     fileNameInput.addEventListener("change", (e) => {
@@ -460,6 +476,14 @@ document.addEventListener("DOMContentLoaded", () => {
         singleFormData.append("cut-row[]", 0)
       }
 
+
+      // append reply
+      if (reply[index] != undefined) {
+        singleFormData.append("reply[]", reply[index])
+      } else {
+        singleFormData.append("reply[]", false)
+      }
+
       // append rename 
       if (rename[index] != undefined) {
         singleFormData.append("rename[]", rename[index])
@@ -536,8 +560,16 @@ document.addEventListener("DOMContentLoaded", () => {
       checked.forEach((value, _) => {
         formData.append("checked[]", value)
       })
-
       console.log(checked)
+
+
+      reply.splice(index, 1)
+      formData.delete("reply[]")
+
+      reply.forEach((value, _) => {
+        formData.append("reply[]", value)
+      })
+      console.log(reply)
 
       let size_values = formData.getAll("size[]")
       size_values.splice(index, 1)

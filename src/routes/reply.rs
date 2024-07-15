@@ -15,11 +15,6 @@ use serde::Deserialize;
 use size::Size;
 use tracing::{debug, info, trace, warn};
 
-#[derive(Deserialize, Debug)]
-pub struct Params {
-    pub reply: bool,
-}
-
 // TODO: Add an #[instrument] for span tracing
 #[utoipa::path(
     get,
@@ -28,16 +23,13 @@ pub struct Params {
         (status = 200, description = "Cell reply")
     )
 )]
-pub async fn cell_reply_files(
-    Query(params): Query<Params>,
-    multipart: Multipart,
-) -> Result<impl IntoResponse> {
+pub async fn cell_reply_files(multipart: Multipart) -> Result<impl IntoResponse> {
     info!("Cell reply requested. Processing files...");
 
     // create the files map object that will handle the "cell reply"
-    let buffer = FilesMap::reply_from_multipart(multipart, params.reply)
+    let buffer = FilesMap::reply_from_multipart(multipart)
         .await?
-        .write_to_buffer(false, params.reply)?;
+        .write_to_buffer(false)?;
 
     Ok(buffer)
 }
@@ -50,15 +42,14 @@ pub async fn cell_reply_files(
     )
 )]
 pub async fn cell_reply_file(
-    Query(params): Query<Params>,
     multipart: Multipart,
 ) -> Result<impl IntoResponse> {
     info!("Cell reply requested (single). Processing file...");
 
     // create the files map object that will handle the "cell reply"
-    let buffer = FilesMap::reply_from_multipart(multipart, params.reply)
+    let buffer = FilesMap::reply_from_multipart(multipart)
         .await?
-        .write_to_buffer(true, params.reply)?;
+        .write_to_buffer(true)?;
 
     Ok(buffer)
 }
@@ -161,6 +152,7 @@ pub async fn cell_reply_template(mut multipart: Multipart) -> Result<impl IntoRe
                     vec![],
                     false,
                     sheet_name.0.to_string(),
+                    false,
                     false,
                 ));
             }

@@ -42,6 +42,7 @@ pub struct ReplyFile {
     pub rename: bool,
     pub sheet_name: String,
     pub checked: bool,
+    pub reply: bool,
 }
 
 impl ReplyFiles {
@@ -64,6 +65,7 @@ impl ReplyFile {
         rename: bool,
         sheet_name: String,
         checked: bool,
+        reply: bool,
     ) -> Self {
         ReplyFile {
             last_modified,
@@ -78,13 +80,14 @@ impl ReplyFile {
             rename,
             sheet_name,
             checked,
+            reply,
         }
     }
 }
 
 impl ReplyFiles {
     //// save the merged file to a buffer
-    pub fn write_to_buffer(&mut self, single: bool, reply: bool) -> Result<Vec<u8>> {
+    pub fn write_to_buffer(&mut self, single: bool) -> Result<Vec<u8>> {
         if !single {
             let mut buffer: Vec<u8> = Vec::new();
             let mut zip = ZipWriter::new(Cursor::new(&mut buffer));
@@ -116,7 +119,7 @@ impl ReplyFiles {
                     }
                 }
 
-                if reply && !file.merged_locations.is_empty() {
+                if file.reply && !file.merged_locations.is_empty() {
                     Self::write_loc_sheet(&mut workbook, &file.rows, &file.merged_locations)?;
                 } else if !file.merged_locations.is_empty() {
                     for location in &file.merged_locations {
@@ -171,7 +174,7 @@ impl ReplyFiles {
             }
 
             // write the location sheet
-            if reply && !file.merged_locations.is_empty() {
+            if file.reply && !file.merged_locations.is_empty() {
                 Self::write_loc_sheet(&mut workbook, &file.rows, &file.merged_locations)?;
             } else if !file.merged_locations.is_empty() {
                 for location in file.merged_locations.iter() {

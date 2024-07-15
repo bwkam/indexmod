@@ -349,16 +349,14 @@ impl FilesMap {
     }
 
     // TODO: block workboots with more than a sheet!
-    pub async fn reply_from_multipart(
-        mut multipart: Multipart,
-        cell_reply: bool,
-    ) -> Result<ReplyFiles> {
+    pub async fn reply_from_multipart(mut multipart: Multipart) -> Result<ReplyFiles> {
         let mut files: ReplyFiles = ReplyFiles::new(vec![]);
         let mut dates: Vec<String> = vec![];
         let mut rename: Vec<bool> = vec![];
         let mut cutting_rows: Vec<u32> = vec![];
         let mut sizes: Vec<u32> = vec![];
         let mut checked: Vec<bool> = vec![];
+        let mut reply: Vec<bool> = vec![];
 
         while let Some(field) = multipart.next_field().await.unwrap() {
             let content_type = field.content_type().map(str::to_owned);
@@ -382,6 +380,17 @@ impl FilesMap {
                     }
                 }
                 trace!("checked: {:?}", checked);
+
+                continue;
+            }
+
+            if name == "reply[]" {
+                if let Ok(reply_str) = String::from_utf8(bytes.to_vec()) {
+                    if let Ok(reply_value) = reply_str.parse::<bool>() {
+                        reply.push(reply_value);
+                    }
+                }
+                trace!("reply: {:?}", reply);
 
                 continue;
             }
@@ -482,6 +491,7 @@ impl FilesMap {
             file.size = sizes[i].clone();
             file.rename = rename[i].clone();
             file.checked = checked[i].clone();
+            file.reply = reply[i].clone();
         });
 
         dates.clear();
@@ -489,6 +499,7 @@ impl FilesMap {
         sizes.clear();
         rename.clear();
         checked.clear();
+        reply.clear();
 
         // dbg!(&files.data);
 
@@ -545,7 +556,7 @@ impl FilesMap {
                         }
 
                         // unmerge
-                        if cell_reply {
+                        if file.reply {
                             file.rows.iter_mut().for_each(|row| {
                                 if idx >= merged_region.start.0 && idx <= merged_region.end.0 {
                                     row[(merged_region.start.1) as usize] = merged_value.clone();
@@ -577,7 +588,7 @@ impl FilesMap {
                         merged_region.end.0 -= file.cutting_rows;
 
                         // unmerge
-                        if cell_reply {
+                        if file.reply {
                             file.rows[(merged_region.start.0) as usize]
                                 .iter_mut()
                                 .for_each(|cell| {
@@ -1067,6 +1078,7 @@ fn process_workbook<R, RS>(
             vec![],
             false,
             sheet_name.0.to_string(),
+            false,
             false,
         ));
     }
