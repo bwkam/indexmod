@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.1.4")
+  console.log("using version 4.1.5")
 
 
   folderFileInput.addEventListener("change", async (e) => {
@@ -105,20 +105,23 @@ document.addEventListener("DOMContentLoaded", () => {
         formData.append("excel-file[]", newFile)
 
         cutRows.push(row[5])
-        checked.push(row[6])
 
         // update the dom 
         cutRowsInputs[idx].value =  row[5]
         fileNameInputs[idx].value = row[1]
 
         // skip the cell reply (find a better approach :P)
+        console.log(row[6])
         if (row[6] == "Y") {
           checkboxes[idx+1].checked = true
-        } else if (row[6] == "" || row[6] == "N") {
+          checked.push(true)
+        } else if (row[6] == "" || row[6] == "N" || row[6] == undefined) {
           checkboxes[idx+1].checked = false
+          checked.push(false)
         }
       })
     }
+
 
     reader.onerror = function () {
       // Handle FileReader errors
@@ -126,9 +129,13 @@ document.addEventListener("DOMContentLoaded", () => {
       throw new Error("FileReader error")
     }
 
-    reader.readAsBinaryString(file)
+    reader.readAsArrayBuffer(file)
 
-    submitExcelButton.click()
+    reader.onloadend = (e) => {
+      console.log(checked)
+      submitExcelButton.click()
+    }
+
   })
 
   excelFileInput.addEventListener("change", async (e) => {
@@ -174,6 +181,10 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("logging cut rows")
     console.log(cutRows)
 
+    console.log("")
+    console.log(checked)
+
+
     // append cut row
     formData.getAll("excel-file[]").forEach((_, idx) => {
       if (cutRows[idx] != undefined) {
@@ -191,9 +202,14 @@ document.addEventListener("DOMContentLoaded", () => {
       if (checked[idx] != undefined){
         formData.append("checked[]", checked[idx])
       } else {
+        console.log("pushing false")
         formData.append("checked[]", false)
       }
+
     })
+
+    console.log("logging checked")
+    console.log(checked)
 
     console.log(formData)
 
@@ -281,6 +297,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     templateFormData.delete("cut-row[]")
     templateFormData.delete("checked[]")
+
     // append cut row
     templateFormData.getAll("excel-file[]").forEach((_, idx) => {
       if (cutRows[idx] != undefined) {
