@@ -937,10 +937,12 @@ fn sheet_to_rows(sheet: Range<Data>) -> Vec<Vec<String>> {
             row.iter()
                 .map(|cell| match cell {
                     Data::String(s) => s.to_owned(),
-                    Data::Int(s) => s.to_string(),
                     Data::Float(s) => s.to_string(),
-                    Data::Empty => " ".to_string(),
-                    _ => "empty".to_owned(),
+                    Data::Int(s) => s.to_string(),
+                    Data::DateTime(s) => s.to_string(),
+                    Data::DateTimeIso(s) => s.to_string(),
+                    Data::Empty => "".to_string(),
+                    _ => "unkown".to_owned(),
                 })
                 .collect_vec()
         })
