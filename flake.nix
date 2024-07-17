@@ -1,62 +1,62 @@
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
     systems.url = "github:nix-systems/default";
+    rust-flake.url = "github:juspay/rust-flake";
+    rust-flake.inputs.nixpkgs.follows = "nixpkgs";
+    process-compose-flake.url = "github:Platonic-Systems/process-compose-flake";
+    cargo-doc-live.url = "github:srid/cargo-doc-live";
 
     # Dev tools
     treefmt-nix.url = "github:numtide/treefmt-nix";
   };
 
   outputs = inputs:
-    inputs.flake-parts.lib.mkFlake { inherit inputs; } {
+    inputs.flake-parts.lib.mkFlake {inherit inputs;} {
       systems = import inputs.systems;
-      imports = [ inputs.treefmt-nix.flakeModule ];
-      perSystem = { config, self', pkgs, lib, system, ... }:
-        let
-          cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
-          nonRustDeps = [ pkgs.libiconv ];
-        in {
-          # Rust package
-          packages.default = pkgs.rustPlatform.buildRustPackage {
-            inherit (cargoToml.package) name version;
-            src = ./.;
-            cargoLock.lockFile = ./Cargo.lock;
-          };
+      imports = [
+        inputs.treefmt-nix.flakeModule
+        inputs.rust-flake.flakeModules.default
+        inputs.rust-flake.flakeModules.nixpkgs
+        inputs.process-compose-flake.flakeModule
+        inputs.cargo-doc-live.flakeModule
+      ];
+      perSystem = {
+        config,
+        self',
+        pkgs,
+        lib,
+        ...
+      }: {
+        rust-project.crane.args = {
+          buildInputs = lib.optionals pkgs.stdenv.isDarwin (
+            with pkgs.darwin.apple_sdk.frameworks; [
+              IOKit
+            ]
+          );
+        };
 
-          # Rust dev environment
-          devShells.default = pkgs.mkShell {
-            inputsFrom = [ config.treefmt.build.devShell ];
-            shellHook = ''
-              # For rust-analyzer 'hover' tooltips to work.
-              export RUST_SRC_PATH=${pkgs.rustPlatform.rustLibSrc}
-              export LIBCLANG_PATH = "${pkgs.llvmPackages_11.libclang.lib}/lib";
-            '';
-            buildInputs = nonRustDeps;
-            nativeBuildInputs = with pkgs; [
-              just
-              rustc
-              cargo
-              cargo-watch
-              cargo-shuttle
-              cargo-expand
-              cargo-flamegraph
-              clippy
-              rust-analyzer
-              pkg-config
-              rustPlatform.bindgenHook
-            ];
-          };
-
-          # Add your auto-formatters here.
-          # cf. https://numtide.github.io/treefmt/
-          treefmt.config = {
-            projectRootFile = "flake.nix";
-            programs = {
-              nixpkgs-fmt.enable = true;
-              rustfmt.enable = true;
-            };
+        # Add your auto-formatters here.
+        # cf. https://nixos.asia/en/treefmt
+        treefmt.config = {
+          projectRootFile = "flake.nix";
+          programs = {
+            nixpkgs-fmt.enable = true;
+            rustfmt.enable = true;
           };
         };
+
+        devShells.default = pkgs.mkShell {
+          inputsFrom = [self'.devShells.excel-merge];
+          packages = [
+            pkgs.cargo-watch
+            config.process-compose.cargo-doc-live.outputs.package
+            pkgs.just
+            pkgs.cargo-flamegraph
+          ];
+        };
+        packages.default = self'.packages.excel-merge;
+      };
     };
 }

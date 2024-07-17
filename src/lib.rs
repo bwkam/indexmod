@@ -1,24 +1,31 @@
 use std::collections::{HashMap, HashSet};
+use std::io::{BufReader, Read, Seek};
+use std::ops::Add;
 use std::time::Instant;
 use std::{io::Cursor, path::Path};
 
 use crate::error::{Error, Result};
 use crate::merge::MergeFiles;
+use crate::reply::{MergedLocation, ReplyFile};
 
 use anyhow::{anyhow, Context};
 use axum::extract::Multipart;
-use calamine::{DataType, Reader};
+use calamine::{Data, Dimensions, Range, Reader, Sheet, Xls, Xlsx};
 use chrono::NaiveDateTime;
 use itertools::Itertools;
+use reply::{MergeType, ReplyFiles};
 use search::{Search, SearchFiles};
 use serde::Deserialize;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace, warn, Instrument};
 use uuid::Uuid;
 
 pub mod api;
 pub mod error;
-pub mod merge;
 pub mod routes;
+
+pub mod merge;
+pub mod reply;
+
 pub mod search;
 
 //                 date    files   series  count    name
@@ -83,9 +90,9 @@ impl FilesMap {
                 print!("Sorting by date...");
                 files.sort_by(|v1, v2| {
                     let dt1 =
-                        NaiveDateTime::parse_from_str(&v1.last_modified, "%Y %m %d %H%M").unwrap();
+                        NaiveDateTime::parse_from_str(&v1.last_modified, "%Y/%m/%d %H:%M").unwrap();
                     let dt2 =
-                        NaiveDateTime::parse_from_str(&v2.last_modified, "%Y %m %d %H%M").unwrap();
+                        NaiveDateTime::parse_from_str(&v2.last_modified, "%Y/%m/%d %H:%M").unwrap();
                     dt1.cmp(&dt2)
                 });
             }
@@ -132,6 +139,7 @@ impl FilesMap {
     pub async fn merge_from_multipart(mut multipart: Multipart) -> Result<MergeFiles> {
         let mut files: Vec<File> = vec![];
         let mut dates: Vec<String> = vec![];
+        let mut first_rows: Vec<String> = vec![];
 
         let mut cutting_rows: usize = 0;
         let mut sort_by_date: bool = false;
@@ -194,7 +202,9 @@ impl FilesMap {
                 || content_type == Some("application/vnd.ms-excel".to_string())
             {
                 let bytes = bytes.to_vec();
-                let is_main = false;
+
+                let is_main = name == "main-file";
+
                 let reader = Cursor::new(bytes);
                 let mut workbook = calamine::open_workbook_auto_from_rs(reader).unwrap();
 
@@ -211,12 +221,21 @@ impl FilesMap {
                         .map(|row| {
                             row.iter()
                                 .map(|cell| match cell {
-                                    DataType::String(s) => s.to_owned(),
-                                    _ => "empty".to_owned(),
+                                    Data::String(s) => s.to_owned(),
+                                    Data::Float(s) => s.to_string(),
+                                    Data::Int(s) => s.to_string(),
+                                    Data::DateTime(s) => s.to_string(),
+                                    Data::DateTimeIso(s) => s.to_string(),
+                                    Data::Empty => "".to_string(),
+                                    _ => "unknown".to_owned(),
                                 })
                                 .collect_vec()
                         })
                         .collect();
+
+                    if is_main {
+                        first_rows = rows[0].clone();
+                    }
 
                     files.push(File::new(
                         other_name,
@@ -312,7 +331,7 @@ impl FilesMap {
             .collect();
 
         // modify the headers
-        let extra_headers = [
+        let mut extra_headers = [
             "Date Modified",
             "Number of Files",
             "Series Number",
@@ -323,9 +342,282 @@ impl FilesMap {
         .map(|x| x.to_string())
         .collect::<Vec<String>>();
 
+        extra_headers.append(&mut first_rows);
         values_rows.insert(0, extra_headers);
 
         Ok(MergeFiles { rows: values_rows })
+    }
+
+    // TODO: block workboots with more than a sheet!
+    pub async fn reply_from_multipart(mut multipart: Multipart) -> Result<ReplyFiles> {
+        let mut files: ReplyFiles = ReplyFiles::new(vec![]);
+        let mut dates: Vec<String> = vec![];
+        let mut rename: Vec<bool> = vec![];
+        let mut cutting_rows: Vec<u32> = vec![];
+        let mut sizes: Vec<u32> = vec![];
+        let mut checked: Vec<bool> = vec![];
+        let mut reply: Vec<bool> = vec![];
+
+        while let Some(field) = multipart.next_field().await.unwrap() {
+            let content_type = field.content_type().map(str::to_owned);
+
+            let name = field.name().unwrap_or("unknown").to_owned();
+            let other_name = field.file_name().unwrap_or("unknown").to_owned();
+            let bytes = field.bytes().await.unwrap();
+
+            if name == "last-mod[]" {
+                let date = String::from_utf8(bytes.to_vec()).unwrap();
+
+                dates.push(date);
+
+                continue;
+            }
+
+            if name == "checked[]" {
+                if let Ok(checked_str) = String::from_utf8(bytes.to_vec()) {
+                    if let Ok(checked_value) = checked_str.parse::<bool>() {
+                        checked.push(checked_value);
+                    }
+                }
+                trace!("checked: {:?}", checked);
+
+                continue;
+            }
+
+            if name == "reply[]" {
+                if let Ok(reply_str) = String::from_utf8(bytes.to_vec()) {
+                    if let Ok(reply_value) = reply_str.parse::<bool>() {
+                        reply.push(reply_value);
+                    }
+                }
+                trace!("reply: {:?}", reply);
+
+                continue;
+            }
+
+            if name == "cut-row[]" {
+                if let Ok(cut_row_str) = String::from_utf8(bytes.to_vec()) {
+                    if cut_row_str.is_empty() {
+                        cutting_rows.push(0);
+                    }
+                    if let Ok(cut_row) = cut_row_str.parse::<u32>() {
+                        cutting_rows.push(cut_row);
+                    }
+                }
+                trace!("Cutting-rows: {:?}", cutting_rows);
+
+                continue;
+            }
+
+            if name == "rename[]" {
+                if let Ok(rename_str) = String::from_utf8(bytes.to_vec()) {
+                    if let Ok(rename_value) = rename_str.parse::<bool>() {
+                        rename.push(rename_value);
+                    }
+                }
+                trace!("Rename: {:?}", rename);
+
+                continue;
+            }
+
+            if name == "size[]" {
+                if let Ok(size_str) = String::from_utf8(bytes.to_vec()) {
+                    if let Ok(size) = size_str.parse::<u32>() {
+                        sizes.push(size);
+                    }
+                }
+                trace!("Size values: {:?}", sizes);
+
+                continue;
+            }
+
+            if let Some(content_type) = content_type {
+                let bytes = bytes.to_vec();
+                let reader = Cursor::new(bytes);
+
+                match content_type.as_str() {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
+                        let mut workbook: calamine::Xlsx<_> =
+                            calamine::open_workbook_from_rs(reader).unwrap();
+
+                        if workbook.worksheets().len() > 1 {
+                            warn!("Has more than one sheet! Will only parse the first sheet.");
+                            return Err(Error::SheetLimitExceeded);
+                        } else {
+                            debug!("Has only one sheet.")
+                        }
+                        println!("File name (xlsx): {:?}", &name);
+                        let mut merged_regions: Vec<Dimensions> = vec![];
+                        if workbook.load_merged_regions().is_ok() {
+                            // FIXME: don't use to_owned
+                            merged_regions = workbook
+                                .merged_regions()
+                                .to_owned()
+                                .iter()
+                                .map(|region| region.2)
+                                .collect();
+                            trace!("Merged regions: {:?}", merged_regions);
+                        }
+                        process_workbook(&mut workbook, &other_name, &mut files, &merged_regions);
+                    }
+                    "application/vnd.ms-excel" => {
+                        let mut workbook: calamine::Xls<_> =
+                            calamine::open_workbook_from_rs(reader).unwrap();
+
+                        if workbook.worksheets().len() > 1 {
+                            warn!("Has more than one sheet! Will only parse the first sheet.");
+                            return Err(Error::SheetLimitExceeded);
+                        } else {
+                            debug!("Has only one sheet.")
+                        }
+                        let mut merged_regions: Vec<Dimensions> = vec![];
+                        println!("File name (xls): {:?}", &name);
+                        if let Some(x) = workbook.worksheet_merge_cells_at(0) {
+                            merged_regions = x;
+                        }
+                        process_workbook(&mut workbook, &other_name, &mut files, &merged_regions);
+                    }
+                    _ => {
+                        // Handle other content types or errors
+                    }
+                }
+                continue;
+            }
+        }
+
+        files.data.iter_mut().enumerate().for_each(|(i, file)| {
+            file.last_modified = dates[i].clone();
+            file.cutting_rows = cutting_rows[i].clone();
+            file.size = sizes[i].clone();
+            file.rename = rename[i].clone();
+            file.checked = checked[i].clone();
+            file.reply = reply[i].clone();
+        });
+
+        dates.clear();
+        cutting_rows.clear();
+        sizes.clear();
+        rename.clear();
+        checked.clear();
+        reply.clear();
+
+        // dbg!(&files.data);
+
+        files.data.retain(|file| file.checked == true);
+
+        // assumption: there's only one sheet
+        for file in &mut files.data {
+            // do the cut
+            let original_rows = file.rows.clone();
+            file.rows = file.rows[(file.cutting_rows as usize)..].to_vec();
+            if !file.merged_regions.is_empty() {
+                // sort regions using rows from bottom to top
+                file.merged_regions
+                    .sort_by(|a, b| a.start.0.cmp(&b.start.0));
+
+                trace!("Merged regions: {:?}", file.merged_regions);
+
+                for merged_region in &mut file.merged_regions {
+                    let merged_value = original_rows[(merged_region.start.0) as usize]
+                        [(merged_region.start.1) as usize]
+                        .to_owned();
+                    let original_merge_regions = merged_region.clone();
+                    // if it's a merged column
+                    if merged_region.start.1 == merged_region.end.1 {
+                        // trace!("row vals: {:?}", file.rows);
+                        // trace!("row_data: {:?}", row_data);
+                        trace!("col {:?}", merged_region);
+
+                        let mut idx = 0;
+
+                        // if it's entirely cut, then just ignore it
+                        if merged_region.start.0 < file.cutting_rows
+                            && merged_region.end.0 < file.cutting_rows
+                        {
+                            trace!("merge region cut, ignored");
+                            continue;
+                        }
+
+                        trace!("cutting original merge regions");
+                        // cut
+                        merged_region.start.0 =
+                            merged_region.start.0.saturating_sub(file.cutting_rows);
+
+                        merged_region.end.0 = merged_region.end.0.saturating_sub(file.cutting_rows);
+
+                        trace!("new merge regions: {:?}", merged_region);
+
+                        // only one cell, so write that and skip this iteration
+                        if merged_region.start.0 == merged_region.end.0 {
+                            println!("single merge cell, writing normally");
+                            file.rows[(merged_region.start.0) as usize]
+                                [(merged_region.start.1) as usize] = merged_value;
+                            continue;
+                        }
+
+                        // unmerge
+                        if file.reply {
+                            file.rows.iter_mut().for_each(|row| {
+                                if idx >= merged_region.start.0 && idx <= merged_region.end.0 {
+                                    row[(merged_region.start.1) as usize] = merged_value.clone();
+                                }
+                                idx += 1;
+                            });
+                        }
+
+                        file.merged_locations.push(MergedLocation {
+                            dimensions: (*merged_region, original_merge_regions),
+                            data: merged_value,
+                            variant: MergeType::Column,
+                        });
+                        // if it's a merged row
+                    } else if merged_region.start.0 == merged_region.end.0 {
+                        // trace!("row vals: {:?}", file.rows);
+                        // trace!("row_data: {:?}", row_data);
+                        let mut idx = 0;
+
+                        // // check if it's cut, if yes then skip it
+                        if merged_region.start.0 <= file.cutting_rows {
+                            trace!("skipping: {:?}", merged_region);
+                            continue;
+                        }
+
+                        trace!("row {:?}", merged_region);
+
+                        merged_region.start.0 -= file.cutting_rows;
+                        merged_region.end.0 -= file.cutting_rows;
+
+                        // unmerge
+                        if file.reply {
+                            file.rows[(merged_region.start.0) as usize]
+                                .iter_mut()
+                                .for_each(|cell| {
+                                    trace!("cell: {:?}", cell);
+                                    if idx >= merged_region.start.1 && idx <= merged_region.end.1 {
+                                        trace!(
+                                            "changing {:?} to {:?}",
+                                            *cell,
+                                            merged_value.clone()
+                                        );
+                                        *cell = merged_value.clone();
+                                    } else {
+                                        trace!("not within range");
+                                    }
+                                    idx += 1;
+                                });
+                        }
+
+                        file.merged_locations.push(MergedLocation {
+                            dimensions: (*merged_region, original_merge_regions),
+                            data: merged_value,
+                            variant: MergeType::Row,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(files)
     }
 
     /// search and filter out the matched rows
@@ -349,7 +641,6 @@ impl FilesMap {
                 continue;
             }
 
-
             if content_type
                 == Some(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
@@ -362,11 +653,13 @@ impl FilesMap {
                 let mut workbook = calamine::open_workbook_auto_from_rs(reader)
                     .context("error opening workbook")?;
 
+                // let mut workbook: Xls<Cursor<Vec<u8>>> =
+                //     calamine::open_workbook_from_rs(reader).context("error opening workbook")?;
+
                 debug!("File name (excel): {:?}", &name);
 
                 if workbook.worksheets().len() > 1 {
                     warn!("Has more than one sheet! Will only parse the first sheet.");
-                    // return Err(Error::SheetLimitExceeded);
                 } else {
                     debug!("Has only one sheet.")
                 }
@@ -376,21 +669,9 @@ impl FilesMap {
                 if let Some(range) = workbook.worksheet_range_at(0) {
                     let sheet = range.context("error getting range")?;
 
+                    let rows = sheet_to_rows(sheet);
+
                     info!("Parsing rows");
-                    let rows: Vec<Vec<String>> = sheet
-                        .rows()
-                        .map(|row| {
-                            row.iter()
-                                .map(|cell| match cell {
-                                    DataType::String(s) => s.to_owned(),
-                                    DataType::Int(s) => s.to_string(),
-                                    DataType::Float(s) => s.to_string(),
-                                    DataType::Empty => " ".to_string(),
-                                    _ => "empty".to_owned(),
-                                })
-                                .collect_vec()
-                        })
-                        .collect();
 
                     info!("Finished. Pushing the file");
 
@@ -471,7 +752,6 @@ fn search_from_files(files: &[File], conditions: &Conditions) -> (Vec<Vec<String
         let mut is_matched;
         let mut new_file_rows: Vec<Vec<String>> = vec![];
         let mut points: usize = 0;
-
 
         for search in &conditions.conditions {
             let current_file_rows = &file.rows;
@@ -650,6 +930,27 @@ fn search_from_files(files: &[File], conditions: &Conditions) -> (Vec<Vec<String
     (final_rows, headers.1)
 }
 
+fn sheet_to_rows(sheet: Range<Data>) -> Vec<Vec<String>> {
+    let rows: Vec<Vec<String>> = sheet
+        .rows()
+        .map(|row| {
+            row.iter()
+                .map(|cell| match cell {
+                    Data::String(s) => s.to_owned(),
+                    Data::Float(s) => s.to_string(),
+                    Data::Int(s) => s.to_string(),
+                    Data::DateTime(s) => s.to_string(),
+                    Data::DateTimeIso(s) => s.to_string(),
+                    Data::Empty => "".to_string(),
+                    _ => "unkown".to_owned(),
+                })
+                .collect_vec()
+        })
+        .collect();
+
+    rows
+}
+
 fn find_dup_indices(dup: &str, vec: &[impl AsRef<str>]) -> Vec<usize> {
     let mut indices = vec![];
     for (i, x) in vec.iter().enumerate() {
@@ -658,6 +959,10 @@ fn find_dup_indices(dup: &str, vec: &[impl AsRef<str>]) -> Vec<usize> {
         }
     }
     indices
+}
+
+fn get_file_extension(filename: &str) -> Option<&str> {
+    filename.rfind('.').map(|index| &filename[index + 1..])
 }
 
 fn calc_file_row_num_infos(files: &[File]) -> Vec<FileRowNumInfo> {
@@ -703,6 +1008,7 @@ fn merge_title_bars(title_bars: &[(usize, Vec<String>)]) -> (Vec<String>, Vec<St
     let main_points_idx = title_bars_clone.iter().map(|x| x.0).position_max().unwrap();
     let (_, main_points_bar) = title_bars_clone.remove(main_points_idx);
 
+    // TODO test
     let title_bar_rows = title_bars_clone
         .iter()
         .flat_map(|x| x.1.clone())
@@ -715,7 +1021,8 @@ fn merge_title_bars(title_bars: &[(usize, Vec<String>)]) -> (Vec<String>, Vec<St
         .unique()
         .collect_vec();
 
-    // TODO: make this a hashset from the beginning
+    // TODO: turn `main_points_bar` and `title_bar_rows` to hashsets
+    //  this is important so we can avoid cloning, which is potentially expensive
     let intersections = main_points_bar
         .clone()
         .into_iter()
@@ -727,6 +1034,57 @@ fn merge_title_bars(title_bars: &[(usize, Vec<String>)]) -> (Vec<String>, Vec<St
     (main_bar, intersections)
 }
 
+fn process_workbook<R, RS>(
+    workbook: &mut R,
+    // name: &str,
+    other_name: &str,
+    files: &mut ReplyFiles,
+    merged_regions: &Vec<Dimensions>,
+) where
+    R: calamine::Reader<RS>,
+    RS: Read + Seek,
+{
+    if let Ok(range) = workbook.worksheet_range_at(0).unwrap() {
+        let sheet_name = &workbook.worksheets()[0];
+
+        let rows: Vec<Vec<String>> = range
+            .rows()
+            .map(|row| {
+                // trace!("row: {:?}", row);
+                row.iter()
+                    .map(|cell| match cell {
+                        Data::String(s) => s.to_owned(),
+                        Data::Float(s) => s.to_string(),
+                        Data::Int(s) => s.to_string(),
+                        Data::DateTime(s) => s.to_string(),
+                        Data::DateTimeIso(s) => s.to_string(),
+                        Data::Empty => "".to_string(),
+                        _ => "unkown".to_owned(),
+                    })
+                    .collect_vec()
+            })
+            .collect();
+
+        let other_name_clone = other_name.to_owned();
+        let ext = get_file_extension(&other_name_clone).unwrap();
+
+        files.data.push(ReplyFile::new(
+            other_name.to_owned(),
+            "unknown".to_string(),
+            rows,
+            ext.to_string(),
+            0,
+            0,
+            merged_regions.to_owned(),
+            vec![],
+            vec![],
+            false,
+            sheet_name.0.to_string(),
+            false,
+            false,
+        ));
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
