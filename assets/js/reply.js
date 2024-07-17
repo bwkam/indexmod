@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   /////////// ______ ///////////
-  console.log("using version 4.1.9");
+  console.log("using version 4.2.1");
 
   folderFileInput.addEventListener("change", async (e) => {
     const files = e.target.files;
@@ -72,6 +72,10 @@ document.addEventListener("DOMContentLoaded", () => {
     let filesLength;
     let checkboxes = document.querySelectorAll(".reply-checkbox");
     let xButtons = document.querySelectorAll(".x-button");
+    let seriesNumbers = [];
+
+    console.log("beginning");
+    console.log(formData.getAll("excel-file[]"));
 
     reader.onload = function (e) {
       var data = e.target.result;
@@ -84,15 +88,37 @@ document.addEventListener("DOMContentLoaded", () => {
         .filter((subArray) => subArray.length > 0);
       const headers = template_sheet.shift();
 
-      filesLength = template_sheet.length;
-      console.log(filesLength);
+      // get the series numbers
+      template_sheet.forEach((row, _) => {
+        seriesNumbers.push(parseInt(row[0]));
+      });
 
       const xButtonsCount = xButtons.length;
 
-      for (let i = xButtonsCount - 1; i >= filesLength; i--) {
-        console.log(xButtons[i]);
-        xButtons[i].click();
-      }
+      // cut the extra rows (greater than template rows)
+      let offset = xButtonsCount - (Math.max(...seriesNumbers) + 1);
+      console.log("offset: " + offset);
+      console.log("buttons count: " + xButtonsCount);
+      console.log("series numbers", seriesNumbers);
+      console.log("max series: " + Math.max(...seriesNumbers));
+
+      // Start from the last element and go towards the beginning
+      // if (offset > 0) {
+      //   console.log("starting");
+      //   for (let i = 0; i < offset; i++) {
+      //     let toClick = xButtonsCount - 1 - i;
+      //     console.log("cutting");
+      //     console.log(toClick);
+      //     console.log("button" + xButtons[toClick]);
+      //     xButtons[toClick].click();
+      //   }
+      // }
+
+      console.log("after cutting end");
+      console.log(formData.getAll("excel-file[]"));
+
+      filesLength = template_sheet.length;
+      console.log(filesLength);
 
       if (
         !headers.equals([
@@ -117,14 +143,11 @@ document.addEventListener("DOMContentLoaded", () => {
       cutRows = [];
       reply = [];
       checked = [];
+      excelList.textContent = "";
 
-      console.log(template_sheet);
-
-      let cutRowsInputs = document.querySelectorAll("#cut-row");
-      let fileNameInputs = document.querySelectorAll("#filename-input");
-
-      template_sheet.forEach((row, idx) => {
+      template_sheet.forEach((row, cur_entry) => {
         let ext;
+        let idx = parseInt(row[0]);
 
         // get the right ext
         if (
@@ -139,13 +162,22 @@ document.addEventListener("DOMContentLoaded", () => {
         const newFile = new File([files[idx]], row[1] + ext, {
           type: files[idx].type,
         });
-        formData.append("excel-file[]", newFile);
+
+        console.log("pushing to excel file");
+        createFileInExcelList(newFile);
+
+        // so they are fresh
+        let cutRowsInputs = document.querySelectorAll(".cut-row");
+        let fileNameInputs = document.querySelectorAll("#filename-input");
 
         cutRows.push(row[5]);
 
+        console.log(cutRowsInputs);
+
         // update the dom
-        cutRowsInputs[idx].value = row[5];
-        fileNameInputs[idx].value = row[1];
+        console.log("Idx:   " + idx);
+        cutRowsInputs[cur_entry].value = row[5];
+        fileNameInputs[cur_entry].value = row[1];
 
         // select all by default
         checked.push(true);
@@ -162,6 +194,21 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       console.log(checked);
+
+      const extraRows = findMissingNumbers(seriesNumbers);
+
+      console.log("b4 cutting skipped");
+      console.log(formData.getAll("excel-file[]"));
+
+      // cut the rows that are skipped based on the template
+      // console.log("cutting useless rows");
+      // extraRows.forEach((i, _) => {
+      //   console.log(i - offset);
+      //   xButtons[i - offset].click();
+      // });
+
+      console.log("after cutting skipped");
+      console.log(formData.getAll("excel-file[]"));
 
       submitExcelButton.click();
     };
@@ -217,9 +264,6 @@ document.addEventListener("DOMContentLoaded", () => {
         formData.append("size[]", size);
       });
 
-    console.log("logging cut rows");
-    console.log(cutRows);
-
     // append cut row
     formData.getAll("excel-file[]").forEach((_, idx) => {
       if (cutRows[idx] != undefined) {
@@ -237,7 +281,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (checked[idx] != undefined) {
         formData.append("checked[]", checked[idx]);
       } else {
-        console.log("pushing false");
         formData.append("checked[]", false);
       }
 
@@ -345,12 +388,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (checked[idx] != undefined) {
         templateFormData.append("checked[]", checked[idx]);
-        console.log("pushing");
-        console.log(checked);
       } else {
         templateFormData.append("checked[]", false);
-        console.log("pushing");
-        console.log(checked);
       }
     });
 
@@ -395,7 +434,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     getFileButton.textContent = "Get File";
 
-    cutRow.id = "cut-row";
+    cutRow.classList.add("cut-row");
 
     fileNameInput.id = "filename-input";
     fileNameInput.value = file.name.split(".")[0];
@@ -413,7 +452,6 @@ document.addEventListener("DOMContentLoaded", () => {
       let index = nodes.indexOf(li);
 
       checked[index] = e.target.checked;
-      console.log(checked);
     });
 
     replyCheckbox.addEventListener("click", (e) => {
@@ -585,15 +623,12 @@ document.addEventListener("DOMContentLoaded", () => {
         formData.append("cut-row[]", value);
       });
 
-      console.log(cutRows);
-
       checked.splice(index, 1);
       formData.delete("checked[]");
 
       checked.forEach((value, _) => {
         formData.append("checked[]", value);
       });
-      console.log(checked);
 
       reply.splice(index, 1);
       formData.delete("reply[]");
@@ -601,7 +636,6 @@ document.addEventListener("DOMContentLoaded", () => {
       reply.forEach((value, _) => {
         formData.append("reply[]", value);
       });
-      console.log(reply);
 
       let size_values = formData.getAll("size[]");
       size_values.splice(index, 1);
