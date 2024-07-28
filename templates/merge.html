@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <!-- metadata -->
@@ -10,22 +10,44 @@
 
     <!-- our general utils -->
     <script src="/_assets/js/utils.js"></script>
-    <script src="/_assets/js/merge.js"></script>
     <!-- our general utils -->
 
     <!-- dependencies -->
     <script src="/_assets/js/zip.min.js"></script>
     <script src="/_assets/js/htmx.min.js.js"></script>
     <script src="/_assets/js/_hyperscript.min.js.js"></script>
+    <script defer src="/_assets/js/alpine.min.js.js"></script>
     <!-- dependencies -->
   </head>
   <body>
-    <form id="main-form">
-      <!-- Main file -->
+    <!-- form  -->
+    <form
+      id="main-form"
+      enctype="multipart/form-data"
+      hx-post="/merge"
+      x-data="{ files: [], main: {file: '', date: ''} }"
+    >
+      <!-- label -->
       <label for="main-file">Main files</label>
-      <input type="file" id="main-file" name="main-file" accept=".xlsx, .xls" />
+      <input
+        type="file"
+        id="main-file"
+        accept=".xlsx, .xls"
+        @change.prevent="
+          let file = $event.target.files[0];
+          let date = file.lastModified; 
+          main.file = file; 
+          main.date = date;
+        "
+      />
 
-      <ul id="main-file-list"></ul>
+      <input type="hidden" x-model="main" name="main"></input>
+
+      <template x-if="main.file != ''"> 
+        <ul id="main-file-list">
+          <li x-text="main.file.name"></li>
+        </ul>
+      </template>
       <button
         type="button"
         id="add-main-file"
@@ -33,20 +55,31 @@
       >
         Add main file
       </button>
-      <!-- Main file -->
 
       <h1 id="loading" style="display: none">Loading...</h1>
-
-      <!-- Excel files -->
 
       <label for="excel-file"></label>
       <input
         type="file"
         id="excel-file"
-        name="excel-file[]"
         accept=".xlsx, .xls"
         multiple
+        _="on click set my value to null"
+        @change.prevent="
+          let _files = [...$event.target.files];
+          let newFiles = _files.map(file => {
+            let date = getDate(file.lastModified, false);
+            return {
+              data: file, 
+              lastModified: date,
+            };
+          });
+
+          files = [...files, ...newFiles];
+        "
       />
+
+      <input type="hidden" id="files" name="files" x-model="files" />
 
       <button
         type="button"
@@ -55,38 +88,55 @@
       >
         Add Excel
       </button>
-      <!-- Excel files -->
 
-      <!-- Cutting rows -->
       <label for="cutting-rows">Cutting Rows:</label>
       <input type="number" id="cutting-rows" name="cutting-rows" />
-      <!-- Cutting rows -->
 
-      <!-- Zip input -->
       <label for="zip-input"></label>
-      <input type="file" id="zip-input" name="zip-input" accept=".zip" />
+      <input
+        type="file"
+        id="zip-input"
+        name="zip-input"
+        accept=".zip"
+        @change.prevent="
+         await withZipFiles($event, function (result) {
+          files = [...files, ...result];
+         })
+      "
+      />
       <button type="button" id="add-zip" _="on click call #zip-input.click()">
         Add Zip
       </button>
-      <!-- Zip input -->
 
-      <!-- UL for the excel files -->
-      <ul id="excel-list"></ul>
-      <!-- UL for the excel files -->
+      <ul id="excel-list">
+        <template x-for="(file, index) in files" :key="index">
+          <li>
+            <label x-text="file.data.name"></label>
+            <button
+              type="button"
+              @click.prevent="
+                files.splice(index, 1);
+              "
+            >
+              X
+            </button>
+          </li>
+        </template>
+      </ul>
 
-      <!-- Submit button -->
-      <button type="submit" id="submit-excel">Run</button>
-      <!-- Submit button -->
+      <!-- main submit button -->
+      <button
+        type="submit"
+        id="submit-excel"
+      >
+        Run
+      </button>
 
-      <!-- Sort by date -->
       <input name="sort-by-date" type="checkbox" id="sortByDateCheckbox" />
       <label for="sortByDateCheckbox">Sort by date</label>
-      <!-- Sort by date -->
 
-      <!-- Sort by file -->
       <input name="sort-by-file" type="checkbox" id="sortByFileCheckbox" />
       <label for="sortByFileCheckbox">Sort by file</label>
-      <!-- Sort by file -->
     </form>
   </body>
 </html>

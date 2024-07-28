@@ -120,3 +120,53 @@ function findMissingNumbers(numbers) {
 
   return missingNumbers;
 }
+
+function atClicked(e, f) {
+  let li = e.target.closest("li");
+  let nodes = Array.from(li.closest("ul").children);
+  let index = nodes.indexOf(li);
+
+  f(index);
+}
+
+async function withZipFiles(e, f) {
+  const zipReader = new zip.ZipReader(new zip.BlobReader(e.target.files[0]));
+  const entries = await zipReader.getEntries();
+
+  const promises = entries.map(async (entry) => {
+    let writer;
+    let mime;
+
+    if (entry.filename.endsWith(".xlsx")) {
+      writer = new zip.BlobWriter(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      mime =
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    } else if (entry.filename.endsWith(".xls")) {
+      writer = new zip.BlobWriter("application/vnd.ms-excel");
+      mime = "application/vnd.ms-excel";
+    }
+
+    const blob = new Blob([await entry.getData(writer)], {
+      type: mime,
+    });
+
+    const file = new File([blob], entry.filename, {
+      type: mime,
+    });
+
+    const rawDate = await entry.rawLastModDate;
+    const date = getDate(rawDate, true);
+
+    return { file, date };
+  });
+
+  const results = await Promise.all(promises);
+
+  const files = results.map((result) => result.file);
+  const dates = results.map((result) => result.date);
+
+  await zipReader.close();
+  f(files, dates);
+}
