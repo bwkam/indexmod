@@ -159,14 +159,11 @@ async function withZipFiles(e, f) {
     const rawDate = await entry.rawLastModDate;
     const date = getDate(rawDate, true);
 
-    return { file, date };
+    return { data: file, lastModified: date };
   });
 
   const results = await Promise.all(promises);
 
-  const files = results.map((result) => result.file);
-  const dates = results.map((result) => result.date);
-
   await zipReader.close();
-  f(files, dates);
+  f(results);
 }

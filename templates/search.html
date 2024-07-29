@@ -10,13 +10,13 @@
 
     <!-- our general utils -->
     <script src="/_assets/js/utils.js"></script>
-    <script src="/_assets/js/search.js"></script>
     <!-- our general utils -->
 
     <!-- dependencies -->
     <script src="/_assets/js/zip.min.js"></script>
     <script src="/_assets/js/htmx.min.js.js"></script>
     <script src="/_assets/js/_hyperscript.min.js.js"></script>
+    <script defer src="/_assets/js/alpine.min.js.js"></script>
     <script src="/_assets/js/xlsx.js"></script>
     <!-- dependencies -->
   </head>
@@ -41,17 +41,31 @@
     }
   </style>
   <body>
-    <form>
-      <h1 id="loading" style="display: none">Loading...</h1>
-
+    <form
+      id="main-form"
+      enctype="multipart/form-data"
+      hx-post="/search"
+      x-data="{ files: [], search: { conditions: [{data: '', title: '', intersections: []}] } }"
+    >
       <!-- Excel files -->
       <label for="excel-file"></label>
       <input
         type="file"
         id="excel-file"
-        name="excel-file"
         accept=".xlsx, .xls"
         multiple
+        _="on click set my value to null"
+        @change.prevent="
+          let _files = [...$event.target.files];
+          let newFiles = _files.map(file => {
+            let date = getDate(file.lastModified, false);
+            return {
+              data: file, 
+              lastModified: date,
+            };
+          });
+          files = [...files, ...newFiles];
+        "
       />
 
       <button
@@ -65,7 +79,17 @@
 
       <!-- Zip input -->
       <label for="zip-input"></label>
-      <input type="file" id="zip-input" name="zip-input" accept=".zip" />
+      <input
+        type="file"
+        id="zip-input"
+        name="zip-input"
+        accept=".zip"
+        @change.prevent="
+         await withZipFiles($event, function (results) {
+          files = [...files, ...results];
+         });
+      "
+      />
       <button type="button" id="add-zip" _="on click call #zip-input.click()">
         Add Zip
       </button>
@@ -79,8 +103,54 @@
       <input
         type="file"
         id="template-input"
-        name="template-input"
         accept=".xlsx, .xls"
+        _="on click set my value to null"
+        @change.prevent='
+          let file = $event.target.files[0];
+          let reader = new FileReader();
+
+          search.conditions = [];
+          console.log("should be empty", search);
+
+          reader.onload = function(e) {
+            let file = e.target.result; 
+            let workbook = XLSX.read(file, {type: "binary"});
+            let sheet = workbook.Sheets[workbook.SheetNames[0]]; 
+            const data = XLSX.utils.sheet_to_json(sheet, {header: 1});
+            console.log(data);
+
+            // skip the header
+            for (let i = 1; i < data.length; i++) {
+              let _data = data[i][0];
+              let title = data[i][1];
+              let intersections = [];
+
+              for (let j = 2; j < data[i].length; j += 2) {
+                let intersectionData = data[i][j];
+                let intersectionTitle = data[i][j + 1];
+
+                intersections.push({
+                  data: intersectionData,
+                  title: intersectionTitle,
+                  intersections: [],
+                });
+              }
+
+              search.conditions.push({
+                title: title,
+                data: _data,
+                intersections: intersections,
+              });
+            }
+          };
+
+          reader.onerror = function () {
+            alert("Error reading the file");
+            throw new Error("FileReader error");
+          };
+
+          reader.readAsArrayBuffer(file);
+        '
       />
       <button
         type="button"
@@ -95,10 +165,20 @@
       <input
         type="file"
         id="folder-input"
-        name="folder-input"
         webkitdirectory
         directory
         multiple
+        @change.prevent="
+          let _files = [...$event.target.files];
+          let newFiles = _files.map(file => {
+            let date = getDate(file.lastModified, false);
+            return {
+              data: file, 
+              lastModified: date,
+            };
+          });
+          files = [...files, ...newFiles];
+         "
       />
       <button
         type="button"
@@ -109,17 +189,101 @@
       </button>
 
       <!-- UL for the excel files -->
-      <ul id="excel-list"></ul>
-      <label id="total-count" style="font-weight: bold"></label>
+      <ul id="excel-list">
+        <template x-for="(file, index) in files" :key="index">
+          <li>
+            <label x-text="file.data.name"></label>
+            <button
+              type="button"
+              @click.prevent="
+                files.splice(index, 1);
+              "
+            >
+              X
+            </button>
+          </li>
+        </template>
+      </ul>
+      <label id="total-count">
+        Total files <strong x-text="files.length"></strong>
+      </label>
       <!-- UL for the excel files -->
 
       <!-- Search -->
-      <button type="button" id="add-search">+</button>
-      <div id="search" style="display: flex; flex-direction: column"></div>
+      <button
+        type="button"
+        id="add-search"
+        @click.prevent='
+          search.conditions.push({data: "", title: "", intersections: []});
+          console.log(search)
+        '
+      >
+        +
+      </button>
+      <div id="search" style="display: flex; flex-direction: column">
+        <template x-for="(condition, index) in search.conditions" :key="index">
+          <div style="display: flex" x-init="console.log(condition, index)">
+            <input
+              x-model="condition.data"
+              type="text"
+              placeholder="Data"
+              class="intersectionDataInput"
+            />
+            <input
+              x-model="condition.title"
+              type="text"
+              placeholder="Title"
+              class="intersectionTitleInput"
+            />
+
+            <template
+              x-for="(condition2, index2) in condition.intersections"
+              :key="index2"
+            >
+              <div style="display: flex">
+                <input
+                  x-model="condition2.data"
+                  type="text"
+                  placeholder="Data"
+                  class="intersectionDataInput"
+                />
+                <input
+                  x-model="condition2.title"
+                  type="text"
+                  placeholder="Title"
+                  class="intersectionTitleInput"
+                />
+              </div>
+            </template>
+
+            <button
+              type="button"
+              class="andButton"
+              @click.prevent="
+                condition.intersections.push({data: '', title: ''});
+              "
+            >
+              And
+            </button>
+          </div>
+        </template>
+      </div>
       <!-- Search -->
 
+      <input type="hidden" id="files" name="files[]" x-model="files" />
+      <input type="hidden" id="search" name="search" x-model="search" />
+
       <!-- Submit button -->
-      <button type="submit" id="submit-excel">Search</button>
+      <button
+        type="submit"
+        id="submit-excel"
+        @click="
+          files.forEach(file => console.log(file))
+          console.log(search)
+        "
+      >
+        Search
+      </button>
       <!-- Submit button -->
     </form>
 
