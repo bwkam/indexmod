@@ -25,7 +25,7 @@
       id="main-form"
       enctype="multipart/form-data"
       hx-post="/merge"
-      x-data="{ files: [], main: {file: '', date: ''} }"
+      x-data="{ files: [], main: {data: '', lastModified: ''} }"
     >
       <!-- label -->
       <label for="main-file">Main files</label>
@@ -35,17 +35,17 @@
         accept=".xlsx, .xls"
         @change.prevent="
           let file = $event.target.files[0];
-          let date = file.lastModified; 
-          main.file = file; 
-          main.date = date;
+          let date = getDate(file.lastModified, false); 
+          main.data = file; 
+          main.lastModified = date;
         "
       />
 
       <input type="hidden" x-model="main" name="main"></input>
 
-      <template x-if="main.file != ''"> 
+      <template x-if="main.data != ''"> 
         <ul id="main-file-list">
-          <li x-text="main.file.name"></li>
+          <li x-text="main.data.name"></li>
         </ul>
       </template>
       <button
@@ -96,7 +96,6 @@
       <input
         type="file"
         id="zip-input"
-        name="zip-input"
         accept=".zip"
         @change.prevent="
          await withZipFiles($event, function (result) {
