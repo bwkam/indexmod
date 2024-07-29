@@ -1,8 +1,10 @@
-/target
-/result
-/result-lib
+**/target
+
+**/result
 .direnv
-*.zip
-*.svg
-perf.data
-perf.data.old
+
+**/*.zip
+**/*.svg
+
+**/perf.data
+**/perf.data.old
