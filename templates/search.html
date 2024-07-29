@@ -45,7 +45,7 @@
       id="main-form"
       enctype="multipart/form-data"
       hx-post="/search"
-      x-data="{ files: [], search: { conditions: [{data: '', title: '', intersections: []}] } }"
+      x-data="{ files: { data: [] }, config: { search: { conditions: [{data: '', title: '', intersections: []}] } } }"
     >
       <!-- Excel files -->
       <label for="excel-file"></label>
@@ -64,7 +64,7 @@
               lastModified: date,
             };
           });
-          files = [...files, ...newFiles];
+          files.data = [...files.data, ...newFiles];
         "
       />
 
@@ -86,7 +86,7 @@
         accept=".zip"
         @change.prevent="
          await withZipFiles($event, function (results) {
-          files = [...files, ...results];
+          files.data = [...files.data, ...results];
          });
       "
       />
@@ -108,9 +108,7 @@
         @change.prevent='
           let file = $event.target.files[0];
           let reader = new FileReader();
-
-          search.conditions = [];
-          console.log("should be empty", search);
+          config.search.conditions = [];
 
           reader.onload = function(e) {
             let file = e.target.result; 
@@ -136,7 +134,7 @@
                 });
               }
 
-              search.conditions.push({
+              config.search.conditions.push({
                 title: title,
                 data: _data,
                 intersections: intersections,
@@ -177,7 +175,7 @@
               lastModified: date,
             };
           });
-          files = [...files, ...newFiles];
+          files.data = [...files.data, ...newFiles];
          "
       />
       <button
@@ -190,13 +188,13 @@
 
       <!-- UL for the excel files -->
       <ul id="excel-list">
-        <template x-for="(file, index) in files" :key="index">
+        <template x-for="(file, index) in files.data" :key="index">
           <li>
             <label x-text="file.data.name"></label>
             <button
               type="button"
               @click.prevent="
-                files.splice(index, 1);
+                files.data.splice(index, 1);
               "
             >
               X
@@ -205,7 +203,7 @@
         </template>
       </ul>
       <label id="total-count">
-        Total files <strong x-text="files.length"></strong>
+        Total files <strong x-text="files.data.length"></strong>
       </label>
       <!-- UL for the excel files -->
 
@@ -214,14 +212,17 @@
         type="button"
         id="add-search"
         @click.prevent='
-          search.conditions.push({data: "", title: "", intersections: []});
-          console.log(search)
+          config.search.conditions.push({data: "", title: "", intersections: []});
+          console.log(config.search)
         '
       >
         +
       </button>
       <div id="search" style="display: flex; flex-direction: column">
-        <template x-for="(condition, index) in search.conditions" :key="index">
+        <template
+          x-for="(condition, index) in config.search.conditions"
+          :key="index"
+        >
           <div style="display: flex" x-init="console.log(condition, index)">
             <input
               x-model="condition.data"
@@ -270,16 +271,16 @@
       </div>
       <!-- Search -->
 
-      <input type="hidden" id="files" name="files[]" x-model="files" />
-      <input type="hidden" id="search" name="search" x-model="search" />
+      <input type="hidden" id="files" name="files" x-model="files" />
+      <input type="hidden" id="config" name="config" x-model="config" />
 
       <!-- Submit button -->
       <button
         type="submit"
         id="submit-excel"
         @click="
-          files.forEach(file => console.log(file))
-          console.log(search)
+          console.log(files)
+          console.log(config.search)
         "
       >
         Search

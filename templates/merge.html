@@ -25,7 +25,7 @@
       id="main-form"
       enctype="multipart/form-data"
       hx-post="/merge"
-      x-data="{ files: [], main: {data: '', lastModified: ''} }"
+      x-data="{ files: {main: {data: '', lastModified: ''}, data: [] }, config: { sortByDate: false, sortByFile: false, cuttingRows: 0 } }"
     >
       <!-- label -->
       <label for="main-file">Main files</label>
@@ -36,16 +36,14 @@
         @change.prevent="
           let file = $event.target.files[0];
           let date = getDate(file.lastModified, false); 
-          main.data = file; 
-          main.lastModified = date;
+          files.main.data = file; 
+          files.main.lastModified = date;
         "
       />
 
-      <input type="hidden" x-model="main" name="main"></input>
-
-      <template x-if="main.data != ''"> 
+      <template x-if="files.main.data != ''">
         <ul id="main-file-list">
-          <li x-text="main.data.name"></li>
+          <li x-text="files.main.data.name"></li>
         </ul>
       </template>
       <button
@@ -75,11 +73,12 @@
             };
           });
 
-          files = [...files, ...newFiles];
+          files.data = [...files.data, ...newFiles];
         "
       />
 
       <input type="hidden" id="files" name="files" x-model="files" />
+      <input type="hidden" id="config" name="config" x-model="config" />
 
       <button
         type="button"
@@ -90,7 +89,7 @@
       </button>
 
       <label for="cutting-rows">Cutting Rows:</label>
-      <input type="number" id="cutting-rows" name="cutting-rows" />
+      <input x-model="config.cuttingRows" type="number" id="cutting-rows" />
 
       <label for="zip-input"></label>
       <input
@@ -99,7 +98,7 @@
         accept=".zip"
         @change.prevent="
          await withZipFiles($event, function (result) {
-          files = [...files, ...result];
+          files.data = [...files.data, ...result];
          })
       "
       />
@@ -108,13 +107,13 @@
       </button>
 
       <ul id="excel-list">
-        <template x-for="(file, index) in files" :key="index">
+        <template x-for="(file, index) in files.data" :key="index">
           <li>
             <label x-text="file.data.name"></label>
             <button
               type="button"
               @click.prevent="
-                files.splice(index, 1);
+                files.data.splice(index, 1);
               "
             >
               X
@@ -129,16 +128,24 @@
         id="submit-excel"
         @click="
           console.log(files);
-          console.log(main);
+          console.log(config);
         "
       >
         Run
       </button>
 
-      <input name="sort-by-date" type="checkbox" id="sortByDateCheckbox" />
+      <input
+        x-model="config.sortByDate"
+        type="checkbox"
+        id="sortByDateCheckbox"
+      />
       <label for="sortByDateCheckbox">Sort by date</label>
 
-      <input name="sort-by-file" type="checkbox" id="sortByFileCheckbox" />
+      <input
+        x-model="config.sortByFile"
+        type="checkbox"
+        id="sortByFileCheckbox"
+      />
       <label for="sortByFileCheckbox">Sort by file</label>
     </form>
   </body>
