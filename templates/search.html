@@ -117,6 +117,20 @@
             const data = XLSX.utils.sheet_to_json(sheet, {header: 1});
             console.log(data);
 
+             // validate the file format
+            const expectedHeaders = ["DATA", "TITLE"]
+            const actualHeaders = data[0].map((header) => header.trim())
+
+            if (
+              data.length < 2 ||
+              !expectedHeaders.every((header) => actualHeaders.includes(header))
+            ) {
+              alert(
+                "Invalid file format. The template should have at least one row with Title and Data columns.",
+              )
+              throw new Error("Invalid file format")
+            }
+
             // skip the header
             for (let i = 1; i < data.length; i++) {
               let _data = data[i][0];
